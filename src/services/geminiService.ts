@@ -1,6 +1,14 @@
 import { GoogleGenAI } from "@google/genai";
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+const apiKey = import.meta.env.VITE_GEMINI_API_KEY || import.meta.env.GEMINI_API_KEY;
+
+function getClient() {
+  if (!apiKey) {
+    return null;
+  }
+
+  return new GoogleGenAI({ apiKey });
+}
 
 export async function suggestTitleImprovement(judul: string, abstrak: string): Promise<string> {
   const prompt = `Anda adalah "Asisten Digital UPPM Politeknik Sinarmas Berau Coal".
@@ -10,9 +18,14 @@ Dan abstrak: "${abstrak}"
 Tugas Anda:
 Jika judul tersebut tidak lengkap atau kurang akademis, berikan saran perbaikan agar sesuai dengan standar akademik.
 Berikan respons dalam bahasa Indonesia yang formal, profesional, dan mendukung.
-Hanya berikan saran judul dan penjelasan singkat mengapa judul tersebut lebih baik.`;
+  Hanya berikan saran judul dan penjelasan singkat mengapa judul tersebut lebih baik.`;
 
   try {
+    const ai = getClient();
+    if (!ai) {
+      return "Fitur AI belum aktif. Isi VITE_GEMINI_API_KEY di file .env lalu jalankan ulang server development.";
+    }
+
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
       contents: prompt,
@@ -43,6 +56,11 @@ Buat format sitasi standar (misal: APA atau IEEE) yang rapi, dan berikan panduan
 Gunakan bahasa Indonesia yang formal, profesional, dan mendukung.`;
 
   try {
+    const ai = getClient();
+    if (!ai) {
+      return "Fitur AI belum aktif. Isi VITE_GEMINI_API_KEY di file .env lalu jalankan ulang server development.";
+    }
+
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
       contents: prompt,

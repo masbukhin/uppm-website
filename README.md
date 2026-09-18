@@ -10,11 +10,16 @@ View your app in AI Studio: https://ai.studio/apps/989fb36d-13cd-449e-9da5-b4513
 
 ## Run Locally
 
-**Prerequisites:**  Node.js
+**Prerequisites:** Node.js and MySQL 8+
 
 
 1. Install dependencies:
    `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
+2. Copy `.env.example` to `.env.local`, then fill `MYSQL_HOST`, `MYSQL_USER`, `MYSQL_PASSWORD`, and `MYSQL_DATABASE`.
+3. Optional: set `VITE_GEMINI_API_KEY` for Gemini helper buttons.
+4. Run frontend and backend together:
    `npm run dev`
+
+Open `http://localhost:3000`. Backend health is available at `http://localhost:4100/api/health`.
+
+On first start, backend creates strict MySQL tables from `server/schema.sql`. If `data/uppm.sqlite` contains an old snapshot and MySQL is empty, backend imports it once. SQLite remains unchanged as rollback data.

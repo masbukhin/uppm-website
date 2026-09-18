@@ -68,7 +68,7 @@ export default function PublicationForm() {
               <select
                 value={formData.jenis}
                 onChange={(e) => setFormData({ ...formData, jenis: e.target.value as any })}
-                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-shadow"
+                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-shadow"
               >
                 <option value="Jurnal Nasional">Jurnal Nasional</option>
                 <option value="Jurnal Internasional">Jurnal Internasional</option>
@@ -82,7 +82,7 @@ export default function PublicationForm() {
                 required
                 value={formData.judul}
                 onChange={(e) => setFormData({ ...formData, judul: e.target.value })}
-                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-shadow min-h-[80px]"
+                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-shadow min-h-[80px]"
                 placeholder="Masukkan judul artikel..."
               />
             </div>
@@ -94,7 +94,7 @@ export default function PublicationForm() {
                 required
                 value={formData.penulis}
                 onChange={(e) => setFormData({ ...formData, penulis: e.target.value })}
-                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-shadow"
+                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-shadow"
                 placeholder="Contoh: Budi Santoso, Andi M"
               />
             </div>
@@ -106,7 +106,7 @@ export default function PublicationForm() {
                 required
                 value={formData.namaJurnal}
                 onChange={(e) => setFormData({ ...formData, namaJurnal: e.target.value })}
-                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-shadow"
+                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-shadow"
                 placeholder="Contoh: Jurnal Teknik Mesin Indonesia"
               />
             </div>
@@ -119,7 +119,7 @@ export default function PublicationForm() {
                   required
                   value={formData.tahun}
                   onChange={(e) => setFormData({ ...formData, tahun: e.target.value })}
-                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-shadow"
+                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-shadow"
                 />
               </div>
               <div className="space-y-2">
@@ -128,7 +128,7 @@ export default function PublicationForm() {
                   type="text"
                   value={formData.volume}
                   onChange={(e) => setFormData({ ...formData, volume: e.target.value })}
-                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-shadow"
+                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-shadow"
                 />
               </div>
               <div className="space-y-2">
@@ -137,7 +137,7 @@ export default function PublicationForm() {
                   type="text"
                   value={formData.nomor}
                   onChange={(e) => setFormData({ ...formData, nomor: e.target.value })}
-                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-shadow"
+                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-shadow"
                 />
               </div>
               <div className="space-y-2">
@@ -146,7 +146,7 @@ export default function PublicationForm() {
                   type="text"
                   value={formData.halaman}
                   onChange={(e) => setFormData({ ...formData, halaman: e.target.value })}
-                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-shadow"
+                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-shadow"
                   placeholder="1-10"
                 />
               </div>
@@ -158,7 +158,7 @@ export default function PublicationForm() {
                 type="url"
                 value={formData.url}
                 onChange={(e) => setFormData({ ...formData, url: e.target.value })}
-                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-shadow"
+                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-shadow"
                 placeholder="https://doi.org/..."
               />
             </div>
@@ -174,7 +174,7 @@ export default function PublicationForm() {
                     setFormData({ ...formData, fileName: file.name });
                   }
                 }}
-                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-shadow file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-shadow file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-red-50 file:text-red-700 hover:file:bg-red-100"
               />
               {formData.fileName && (
                 <p className="text-xs text-slate-500 mt-1">File terpilih: <span className="font-medium text-slate-700">{formData.fileName}</span></p>
@@ -193,7 +193,7 @@ export default function PublicationForm() {
               </button>
               <button
                 type="submit"
-                className="px-6 py-3 bg-emerald-600 text-white rounded-xl font-medium hover:bg-emerald-700 transition-colors flex items-center justify-center space-x-2 shadow-sm shadow-emerald-200"
+                className="px-6 py-3 bg-red-600 text-white rounded-xl font-medium hover:bg-red-700 transition-colors flex items-center justify-center space-x-2 shadow-sm shadow-red-200"
               >
                 <Save className="w-5 h-5" />
                 <span>Simpan Publikasi</span>
@@ -208,9 +208,9 @@ export default function PublicationForm() {
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
-              className="bg-emerald-50 border border-emerald-100 p-6 rounded-2xl text-sm text-emerald-800 whitespace-pre-wrap shadow-sm"
+              className="bg-red-50 border border-red-100 p-6 rounded-2xl text-sm text-red-800 whitespace-pre-wrap shadow-sm"
             >
-              <div className="flex items-center space-x-2 mb-4 font-semibold text-emerald-900 border-b border-emerald-200 pb-2">
+              <div className="flex items-center space-x-2 mb-4 font-semibold text-red-900 border-b border-red-200 pb-2">
                 <Sparkles className="w-5 h-5" />
                 <span className="text-base">Hasil Format & Panduan SINTA</span>
               </div>
@@ -229,7 +229,7 @@ export default function PublicationForm() {
               {publications.map((pub) => (
                 <div key={pub.id} className="p-6 hover:bg-slate-50 transition-colors group">
                   <div className="flex justify-between items-start mb-2">
-                    <span className="inline-flex px-2.5 py-1 rounded-full text-xs font-medium bg-blue-50 text-blue-700">
+                    <span className="inline-flex px-2.5 py-1 rounded-full text-xs font-medium bg-red-50 text-red-700">
                       {pub.jenis}
                     </span>
                     <button
@@ -256,7 +256,7 @@ export default function PublicationForm() {
                         href={pub.url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="inline-flex items-center space-x-1 text-xs text-emerald-600 hover:text-emerald-700 font-medium"
+                        className="inline-flex items-center space-x-1 text-xs text-red-600 hover:text-red-700 font-medium"
                       >
                         <LinkIcon className="w-3 h-3" />
                         <span>Lihat Artikel</span>

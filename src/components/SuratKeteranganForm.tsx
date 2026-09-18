@@ -47,7 +47,7 @@ export default function SuratKeteranganForm() {
                 required
                 value={formData.nama}
                 onChange={(e) => setFormData({ ...formData, nama: e.target.value })}
-                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-shadow"
+                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-shadow"
                 placeholder="Contoh: Dr. Budi Santoso"
               />
             </div>
@@ -57,11 +57,11 @@ export default function SuratKeteranganForm() {
               <select
                 value={formData.prodi}
                 onChange={(e) => setFormData({ ...formData, prodi: e.target.value as Prodi })}
-                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-shadow"
+                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-shadow"
               >
                 <option value="TRL">Teknologi Rekayasa Logistik (TRL)</option>
-                <option value="TSP">Teknologi Survei dan Pemetaan (TSP)</option>
-                <option value="TPM">Teknologi Pemeliharaan Mesin (TPM)</option>
+                <option value="SVM">Survei dan Pemetaan (SVM)</option>
+                <option value="PM">Perawatan Mesin (PM)</option>
               </select>
             </div>
 
@@ -70,7 +70,7 @@ export default function SuratKeteranganForm() {
               <select
                 value={formData.jenisSurat}
                 onChange={(e) => setFormData({ ...formData, jenisSurat: e.target.value as any })}
-                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-shadow"
+                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-shadow"
               >
                 <option value="Surat Tugas Penelitian">Surat Tugas Penelitian</option>
                 <option value="Surat Tugas Pengabdian">Surat Tugas Pengabdian</option>
@@ -85,7 +85,7 @@ export default function SuratKeteranganForm() {
                 required
                 value={formData.keperluan}
                 onChange={(e) => setFormData({ ...formData, keperluan: e.target.value })}
-                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-shadow min-h-[100px]"
+                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-shadow min-h-[100px]"
                 placeholder="Sebutkan judul penelitian/pengabdian atau keperluan spesifik lainnya..."
               />
             </div>
@@ -93,7 +93,7 @@ export default function SuratKeteranganForm() {
             <div className="pt-4 flex justify-end">
               <button
                 type="submit"
-                className="px-6 py-3 bg-emerald-600 text-white rounded-xl font-medium hover:bg-emerald-700 transition-colors flex items-center space-x-2 shadow-sm shadow-emerald-200"
+                className="px-6 py-3 bg-red-600 text-white rounded-xl font-medium hover:bg-red-700 transition-colors flex items-center space-x-2 shadow-sm shadow-red-200"
               >
                 <Save className="w-5 h-5" />
                 <span>Ajukan Permintaan</span>
@@ -136,12 +136,12 @@ export default function SuratKeteranganForm() {
                   </span>
                   <div className="flex items-center space-x-1">
                     {s.status === 'Menunggu' && <Clock className="w-3.5 h-3.5 text-amber-500" />}
-                    {s.status === 'Diproses' && <Loader2 className="w-3.5 h-3.5 text-blue-500 animate-spin" />}
-                    {s.status === 'Selesai' && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />}
+                    {s.status === 'Diproses' && <Loader2 className="w-3.5 h-3.5 text-red-500 animate-spin" />}
+                    {s.status === 'Selesai' && <CheckCircle2 className="w-3.5 h-3.5 text-red-500" />}
                     <span className={`font-medium ${
                       s.status === 'Menunggu' ? 'text-amber-600' :
-                      s.status === 'Diproses' ? 'text-blue-600' :
-                      'text-emerald-600'
+                      s.status === 'Diproses' ? 'text-red-600' :
+                      'text-red-600'
                     }`}>
                       {s.status}
                     </span>

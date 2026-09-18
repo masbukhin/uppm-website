@@ -2,9 +2,18 @@ import {StrictMode} from 'react';
 import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
+import { StoreProvider } from './store/useStore.ts';
 
-createRoot(document.getElementById('root')!).render(
+const rootElement = document.getElementById('root');
+
+if (!rootElement) {
+  throw new Error('Elemen root aplikasi tidak ditemukan.');
+}
+
+createRoot(rootElement).render(
   <StrictMode>
-    <App />
+    <StoreProvider>
+      <App />
+    </StoreProvider>
   </StrictMode>,
 );

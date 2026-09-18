@@ -112,7 +112,7 @@ export default function ProjectForm() {
                 <select
                   value={formData.kategori}
                   onChange={(e) => setFormData({ ...formData, kategori: e.target.value as Kategori })}
-                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-shadow"
+                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-shadow"
                 >
                   <option value="Penelitian">Penelitian</option>
                   <option value="Pengabdian">Pengabdian kepada Masyarakat</option>
@@ -123,7 +123,7 @@ export default function ProjectForm() {
                 <select
                   value={formData.skema}
                   onChange={(e) => setFormData({ ...formData, skema: e.target.value as Skema })}
-                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-shadow"
+                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-shadow"
                 >
                   <option value="Internal">Internal</option>
                   <option value="Hibah Kompetitif">Hibah Kompetitif</option>
@@ -135,11 +135,11 @@ export default function ProjectForm() {
                 <select
                   value={formData.prodi}
                   onChange={(e) => setFormData({ ...formData, prodi: e.target.value as Prodi })}
-                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-shadow"
+                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-shadow"
                 >
                   <option value="TRL">Teknologi Rekayasa Logistik (TRL)</option>
-                  <option value="TSP">Teknologi Survei dan Pemetaan (TSP)</option>
-                  <option value="TPM">Teknologi Pemeliharaan Mesin (TPM)</option>
+                  <option value="SVM">Survei dan Pemetaan (SVM)</option>
+                  <option value="PM">Perawatan Mesin (PM)</option>
                 </select>
               </div>
               <div className="space-y-2">
@@ -147,7 +147,7 @@ export default function ProjectForm() {
                 <select
                   value={formData.status}
                   onChange={(e) => setFormData({ ...formData, status: e.target.value as Status })}
-                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-shadow"
+                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-shadow"
                 >
                   <option value="Proposal">Proposal</option>
                   <option value="Laporan Kemajuan">Laporan Kemajuan</option>
@@ -163,7 +163,7 @@ export default function ProjectForm() {
                   type="button"
                   onClick={handleAskAI}
                   disabled={!formData.judul || isLoadingAI}
-                  className="text-xs font-medium text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-lg hover:bg-emerald-100 transition-colors flex items-center space-x-1 disabled:opacity-50"
+                  className="text-xs font-medium text-red-600 bg-red-50 px-3 py-1.5 rounded-lg hover:bg-red-100 transition-colors flex items-center space-x-1 disabled:opacity-50"
                 >
                   {isLoadingAI ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
                   <span>Minta Saran AI</span>
@@ -173,7 +173,7 @@ export default function ProjectForm() {
                 required
                 value={formData.judul}
                 onChange={(e) => setFormData({ ...formData, judul: e.target.value })}
-                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-shadow min-h-[80px]"
+                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-shadow min-h-[80px]"
                 placeholder="Masukkan judul penelitian atau pengabdian..."
               />
             </div>
@@ -182,7 +182,7 @@ export default function ProjectForm() {
               <motion.div
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: 'auto' }}
-                className="bg-emerald-50 border border-emerald-100 p-4 rounded-xl text-sm text-emerald-800 whitespace-pre-wrap"
+                className="bg-red-50 border border-red-100 p-4 rounded-xl text-sm text-red-800 whitespace-pre-wrap"
               >
                 <div className="flex items-center space-x-2 mb-2 font-semibold">
                   <Sparkles className="w-4 h-4" />
@@ -197,7 +197,7 @@ export default function ProjectForm() {
               <textarea
                 value={formData.abstrak}
                 onChange={(e) => setFormData({ ...formData, abstrak: e.target.value })}
-                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-shadow min-h-[100px]"
+                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-shadow min-h-[100px]"
                 placeholder="Deskripsikan secara singkat latar belakang dan tujuan..."
               />
             </div>
@@ -210,7 +210,7 @@ export default function ProjectForm() {
                   required
                   value={formData.ketua}
                   onChange={(e) => setFormData({ ...formData, ketua: e.target.value })}
-                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-shadow"
+                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-shadow"
                   placeholder="Nama lengkap beserta gelar"
                 />
               </div>
@@ -221,7 +221,7 @@ export default function ProjectForm() {
                   required
                   value={formData.anggota}
                   onChange={(e) => setFormData({ ...formData, anggota: e.target.value })}
-                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-shadow"
+                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-shadow"
                   placeholder="Pisahkan dengan koma jika lebih dari satu"
                 />
               </div>
@@ -232,7 +232,7 @@ export default function ProjectForm() {
                   required
                   value={formData.tahunAnggaran}
                   onChange={(e) => setFormData({ ...formData, tahunAnggaran: e.target.value })}
-                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-shadow"
+                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-shadow"
                   placeholder="Contoh: 2024"
                 />
               </div>
@@ -244,7 +244,7 @@ export default function ProjectForm() {
                   min="0"
                   value={formData.dana}
                   onChange={(e) => setFormData({ ...formData, dana: Number(e.target.value) })}
-                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-shadow"
+                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-shadow"
                   placeholder="Jumlah dana disetujui"
                 />
               </div>
@@ -261,7 +261,7 @@ export default function ProjectForm() {
                     setFormData({ ...formData, fileName: file.name });
                   }
                 }}
-                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-shadow file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100"
+                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-shadow file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-red-50 file:text-red-700 hover:file:bg-red-100"
               />
               {formData.fileName && (
                 <p className="text-xs text-slate-500 mt-1">File terpilih: <span className="font-medium text-slate-700">{formData.fileName}</span></p>
@@ -271,7 +271,7 @@ export default function ProjectForm() {
             <div className="pt-4 flex justify-end">
               <button
                 type="submit"
-                className="px-6 py-3 bg-emerald-600 text-white rounded-xl font-medium hover:bg-emerald-700 transition-colors flex items-center space-x-2 shadow-sm shadow-emerald-200"
+                className="px-6 py-3 bg-red-600 text-white rounded-xl font-medium hover:bg-red-700 transition-colors flex items-center space-x-2 shadow-sm shadow-red-200"
               >
                 <Save className="w-5 h-5" />
                 <span>{isEditing ? 'Simpan Perubahan' : 'Simpan Usulan'}</span>
@@ -289,7 +289,7 @@ export default function ProjectForm() {
                 key={project.id}
                 className={`p-4 rounded-2xl border transition-all ${
                   currentId === project.id
-                    ? 'bg-emerald-50 border-emerald-200 shadow-sm'
+                    ? 'bg-red-50 border-red-200 shadow-sm'
                     : 'bg-white border-slate-100 hover:border-slate-200 hover:shadow-sm'
                 }`}
               >
@@ -300,7 +300,7 @@ export default function ProjectForm() {
                   <div className="flex space-x-1">
                     <button
                       onClick={() => handleEdit(project)}
-                      className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
+                      className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                     >
                       <Edit2 className="w-4 h-4" />
                     </button>
@@ -318,7 +318,7 @@ export default function ProjectForm() {
                 <div className="flex items-center justify-between text-xs">
                   <span className="text-slate-500">{project.ketua}</span>
                   <span className={`font-medium ${
-                    project.status === 'Laporan Akhir' ? 'text-blue-600' :
+                    project.status === 'Laporan Akhir' ? 'text-red-600' :
                     project.status === 'Laporan Kemajuan' ? 'text-indigo-600' :
                     'text-slate-600'
                   }`}>

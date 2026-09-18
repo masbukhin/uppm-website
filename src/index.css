@@ -1,1 +1,52 @@
 @import "tailwindcss";
+
+@media print {
+  @page {
+    size: A4;
+    margin: 14mm;
+  }
+
+  body {
+    background: white;
+  }
+
+  body * {
+    visibility: hidden;
+  }
+
+  .print-sheet,
+  .print-sheet * {
+    visibility: visible;
+  }
+
+  .print-sheet {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    min-height: auto;
+    border: 0 !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    color-adjust: exact;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  .barcode-box,
+  .barcode-box * {
+    visibility: visible;
+    color-adjust: exact;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  .barcode-cell {
+    background: #0f172a !important;
+    forced-color-adjust: none;
+  }
+
+  .no-print,
+  .no-print * {
+    display: none !important;
+  }
+}
