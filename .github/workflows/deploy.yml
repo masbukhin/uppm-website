@@ -90,20 +90,25 @@ jobs:
           key: ${{ secrets.VPS_SSH_KEY }}
           port: ${{ secrets.VPS_PORT || 22 }}
           envs: GHCR_USER,GHCR_TOKEN,APP_IMAGE,APP_DIR
-          script_stop: true
           script: |
             set -e
             cd "$APP_DIR"
-            test -f .env || { echo "Missing $APP_DIR/.env (copy from .env.docker.example)"; exit 1; }
+            if [ ! -f .env ]; then echo "Missing $APP_DIR/.env (copy from .env.docker.example)"; exit 1; fi
             echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
             export APP_IMAGE
             docker compose pull app
             docker compose up -d --remove-orphans
             docker logout ghcr.io
+            healthy=no
             for i in $(seq 1 30); do
               status=$(docker inspect -f '{{.State.Health.Status}}' "$(docker compose ps -q app)" 2>/dev/null || echo starting)
-              [ "$status" = healthy ] && { echo "App healthy"; break; }
-              [ "$i" = 30 ] && { echo "App not healthy"; docker compose logs --tail=100 app; exit 1; }
+              if [ "$status" = healthy ]; then healthy=yes; break; fi
               sleep 5
             done
+            if [ "$healthy" != yes ]; then
+              echo "App not healthy"
+              docker compose logs --tail=100 app
+              exit 1
+            fi
+            echo "App healthy"
             docker image prune -f
