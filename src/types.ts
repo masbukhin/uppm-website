@@ -16,7 +16,7 @@ export interface DosenProfile {
 export interface UserAccount {
   id: string;
   username: string;
-  password: string;
+  password?: string; // never sent by the server
   role: UserRole;
   dosenId?: string;
   nama: string;

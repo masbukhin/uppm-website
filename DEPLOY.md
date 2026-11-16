@@ -84,3 +84,28 @@ cp .env.docker.example .env   # isi password
 docker compose up -d --build
 # buka http://localhost:8080
 ```
+
+## Keamanan login (wajib dibaca)
+
+- Login diperiksa di server. Password disimpan sebagai hash `scrypt`, tidak pernah dikirim ke browser.
+- Sesi memakai cookie `HttpOnly` yang ditandatangani `SESSION_SECRET`. Mengganti `SESSION_SECRET` = semua user logout.
+- Semua `/api/snapshot`, `/api/accounts`, dan `/api/sinta` wajib login. Dosen hanya bisa membaca/mengubah data miliknya sendiri.
+  Status persetujuan dan dokumen final (QR) hanya bisa diubah admin.
+- Publik tanpa login: `/api/health`, `/api/verify` (cek QR), `/api/auth/*`.
+- Saat start, password plaintext lama otomatis di-hash. Akun dengan kredensial demo lama dinonaktifkan.
+- Setelah HTTPS aktif, set `COOKIE_SECURE=true` di `.env`.
+
+## Database baru vs pindah data
+
+- **Database kosong**: buka situs, halaman login menampilkan "Setup Admin Awal". Buat admin pertama, lalu buat akun dosen di Panel Admin.
+- **Pindah dari TiDB/Vercel atau MySQL lain**:
+
+  ```bash
+  mysqldump -h HOST_LAMA -P PORT -u USER -p --single-transaction --no-tablespaces NAMA_DB > lama.sql
+  scp lama.sql USER@VPS_IP:/opt/uppm/
+  # di VPS:
+  cd /opt/uppm && docker compose exec -T db sh -c 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" uppm' < lama.sql
+  docker compose restart app   # password lama otomatis di-hash saat start
+  ```
+
+  Setelah itu minta semua user mengganti password lewat menu **Akun Saya**, atau reset dari Panel Admin.

@@ -9,3 +9,6 @@ coverage/
 .vercel
 !.env.docker.example
 .vercel-cli-cache
+data/*.sqlite
+data/*.sqlite-shm
+data/*.sqlite-wal

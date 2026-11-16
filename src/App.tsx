@@ -14,6 +14,7 @@ import MonthlyReportDashboard from './components/MonthlyReportDashboard';
 import DocumentVerification from './components/DocumentVerification';
 import FinanceReport from './components/FinanceReport';
 import PublicResearch from './components/PublicResearch';
+import ChangePasswordForm from './components/ChangePasswordForm';
 import { motion, AnimatePresence } from 'motion/react';
 import { useStore } from './store/useStore';
 
@@ -155,6 +156,11 @@ export default function App() {
         {activeTab === 'finance-report' && isAdmin && (
           <motion.div key="finance-report" initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }} transition={{ duration: 0.2 }}>
             <FinanceReport />
+          </motion.div>
+        )}
+        {activeTab === 'account' && (
+          <motion.div key="account" initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }} transition={{ duration: 0.2 }}>
+            <ChangePasswordForm />
           </motion.div>
         )}
       </AnimatePresence>

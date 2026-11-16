@@ -1,6 +1,10 @@
 import mysql from 'mysql2/promise';
 import fs from 'node:fs';
 import path from 'node:path';
+import { disabledPasswordHash, hashPassword, isPasswordHash } from './auth.mjs';
+
+// Old demo credentials that were once public; accounts using them get disabled.
+const LEAKED_DEMO_CREDENTIALS = new Set(['admin:admin123', 'dosen:dosen123']);
 
 const TABLES = {
   lecturerProfiles: {
@@ -101,58 +105,152 @@ export async function createMysqlStore({ importLegacy = true } = {}) {
   await ensureClaimWorkflowSchema(pool, config.database);
 
   if (importLegacy) await importLegacySnapshot(pool);
+  await migratePlaintextPasswords(pool);
+
+  // Runs `work` in a transaction that holds the app_state row lock, then bumps the revision.
+  async function withRevisionLock(work, expectedRevision) {
+    const connection = await pool.getConnection();
+    try {
+      await connection.beginTransaction();
+      const [[state]] = await connection.query('SELECT revision FROM app_state WHERE id = 1 FOR UPDATE');
+      const revision = Number(state?.revision || 0);
+      if (expectedRevision != null && Number(expectedRevision) !== revision) {
+        const error = new Error('Database telah berubah. Muat ulang halaman sebelum menyimpan lagi.');
+        error.code = 'REVISION_CONFLICT';
+        error.revision = revision;
+        throw error;
+      }
+      const result = await work(connection);
+      const nextRevision = revision + 1;
+      await connection.execute('UPDATE app_state SET revision = ?, updated_at = CURRENT_TIMESTAMP(3) WHERE id = 1', [nextRevision]);
+      await connection.commit();
+      return { ...result, revision: nextRevision };
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
   return {
     async health() {
       await pool.query('SELECT 1');
-      return { driver: 'mysql', host: config.host, port: config.port, database: config.database };
+      return { driver: 'mysql', database: config.database };
     },
     async loadSnapshot() {
       const connection = await pool.getConnection();
       try {
         const [[state]] = await connection.query('SELECT revision FROM app_state WHERE id = 1');
-        const payload = {};
-        for (const [key, definition] of Object.entries(TABLES)) {
-          const [rows] = await connection.query(`SELECT payload FROM \`${definition.table}\` ORDER BY sort_order ASC`);
-          payload[key] = rows.map(row => typeof row.payload === 'string' ? JSON.parse(row.payload) : row.payload);
-        }
-        return { payload, revision: Number(state?.revision || 0) };
+        return { payload: await readPayload(connection), revision: Number(state?.revision || 0) };
       } finally {
         connection.release();
       }
     },
-    async saveSnapshot(payload, expectedRevision) {
-      const connection = await pool.getConnection();
-      try {
-        await connection.beginTransaction();
-        const [[state]] = await connection.query('SELECT revision FROM app_state WHERE id = 1 FOR UPDATE');
-        const revision = Number(state?.revision || 0);
-        if (expectedRevision != null && Number(expectedRevision) !== revision) {
-          const error = new Error('Database telah berubah. Muat ulang halaman sebelum menyimpan lagi.');
-          error.code = 'REVISION_CONFLICT';
-          error.revision = revision;
-          throw error;
-        }
+    /**
+     * Replaces all collections except accounts. `transform(currentPayload)` may rewrite the
+     * incoming payload inside the transaction (used for per-user access rules).
+     */
+    async saveSnapshot(payload, expectedRevision, transform) {
+      return withRevisionLock(async connection => {
+        const finalPayload = transform ? transform(await readPayload(connection)) : payload;
         let saved = 0;
         for (const [key, definition] of Object.entries(TABLES)) {
-          if (key === 'lecturerProfiles' && !Array.isArray(payload[key])) continue;
-          const items = Array.isArray(payload[key]) ? payload[key] : [];
+          if (key === 'accounts') continue; // credentials are managed through the accounts API only
+          if (key === 'lecturerProfiles' && !Array.isArray(finalPayload[key])) continue;
+          const items = Array.isArray(finalPayload[key]) ? finalPayload[key] : [];
           await connection.query(`DELETE FROM \`${definition.table}\``);
           await insertItems(connection, definition, items);
           saved += items.length;
         }
-        const nextRevision = revision + 1;
-        await connection.execute('UPDATE app_state SET revision = ?, updated_at = CURRENT_TIMESTAMP(3) WHERE id = 1', [nextRevision]);
-        await connection.commit();
-        return { saved, revision: nextRevision };
-      } catch (error) {
-        await connection.rollback();
-        throw error;
-      } finally {
-        connection.release();
-      }
+        return { saved };
+      }, expectedRevision);
+    },
+    async findAccountByUsername(username) {
+      const [rows] = await pool.execute('SELECT id, username, password, role, payload FROM accounts WHERE username = ? LIMIT 1', [String(username)]);
+      return rows[0] ? accountFromRow(rows[0]) : null;
+    },
+    async getAccountById(id) {
+      const [rows] = await pool.execute('SELECT id, username, password, role, payload FROM accounts WHERE id = ? LIMIT 1', [String(id)]);
+      return rows[0] ? accountFromRow(rows[0]) : null;
+    },
+    async hasAdmin() {
+      const [[row]] = await pool.query("SELECT COUNT(*) AS total FROM accounts WHERE role = 'admin'");
+      return Number(row.total) > 0;
+    },
+    /** `account.password` must already be a hash. Set `onlyIfNoAdmin` for first-run setup. */
+    async createAccount(account, { onlyIfNoAdmin = false } = {}) {
+      return withRevisionLock(async connection => {
+        if (onlyIfNoAdmin) {
+          const [[row]] = await connection.query("SELECT COUNT(*) AS total FROM accounts WHERE role = 'admin'");
+          if (Number(row.total) > 0) throw Object.assign(new Error('Akun admin sudah tersedia.'), { code: 'ADMIN_EXISTS' });
+        }
+        const [[existing]] = await connection.execute('SELECT id FROM accounts WHERE username = ? LIMIT 1', [account.username]);
+        if (existing) throw Object.assign(new Error('Username sudah dipakai.'), { code: 'USERNAME_TAKEN' });
+        const [[order]] = await connection.query('SELECT COALESCE(MAX(sort_order), -1) + 1 AS next FROM accounts');
+        await insertAccount(connection, account, Number(order.next));
+        return { account };
+      });
+    },
+    async deleteAccount(id) {
+      return withRevisionLock(async connection => {
+        const [result] = await connection.execute('DELETE FROM accounts WHERE id = ?', [String(id)]);
+        return { deleted: result.affectedRows };
+      });
+    },
+    /** `passwordHash` must already be a hash. */
+    async setAccountPassword(id, passwordHash) {
+      const [result] = await pool.execute('UPDATE accounts SET password = ? WHERE id = ?', [passwordHash, String(id)]);
+      return result.affectedRows > 0;
     },
     async close() { await pool.end(); },
   };
+}
+
+async function readPayload(connection) {
+  const payload = {};
+  for (const [key, definition] of Object.entries(TABLES)) {
+    const [rows] = await connection.query(`SELECT payload FROM \`${definition.table}\` ORDER BY sort_order ASC`);
+    payload[key] = rows.map(row => typeof row.payload === 'string' ? JSON.parse(row.payload) : row.payload);
+  }
+  payload.accounts = payload.accounts.map(({ password: _password, ...rest }) => rest);
+  return payload;
+}
+
+function accountFromRow(row) {
+  const payload = typeof row.payload === 'string' ? JSON.parse(row.payload) : (row.payload || {});
+  const { password: _password, ...rest } = payload;
+  return { ...rest, id: row.id, username: row.username, role: row.role, password: row.password };
+}
+
+async function insertAccount(connection, account, sortOrder) {
+  const definition = TABLES.accounts;
+  const columns = definition.columns.map(column => `\`${column}\``).join(', ');
+  const placeholders = definition.columns.map(() => '?').join(', ');
+  const { password: _password, ...payload } = account;
+  await connection.execute(
+    `INSERT INTO \`${definition.table}\` (${columns}) VALUES (${placeholders})`,
+    [...definition.values(account), sortOrder, JSON.stringify(payload)],
+  );
+}
+
+// Hash any plaintext password left from older versions; disable leaked demo credentials.
+async function migratePlaintextPasswords(pool) {
+  const [rows] = await pool.query('SELECT id, username, password, payload FROM accounts');
+  let migrated = 0;
+  for (const row of rows) {
+    const payload = typeof row.payload === 'string' ? JSON.parse(row.payload) : (row.payload || {});
+    const payloadHasPassword = Object.hasOwn(payload, 'password');
+    if (isPasswordHash(row.password) && !payloadHasPassword) continue;
+    const { password: _password, ...cleanPayload } = payload;
+    let hash = row.password;
+    if (!isPasswordHash(hash)) {
+      hash = LEAKED_DEMO_CREDENTIALS.has(`${row.username}:${row.password}`) ? disabledPasswordHash() : hashPassword(row.password);
+    }
+    await pool.execute('UPDATE accounts SET password = ?, payload = ? WHERE id = ?', [hash, JSON.stringify(cleanPayload), row.id]);
+    migrated += 1;
+  }
+  if (migrated) console.log(`${migrated} akun dimigrasi ke password hash (scrypt).`);
 }
 
 async function ensureClaimWorkflowSchema(pool, database) {

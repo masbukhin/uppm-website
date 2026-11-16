@@ -1,7 +1,8 @@
 import { createContext, createElement, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { lecturerProfiles as defaultLecturerProfiles } from '../data/lecturers';
 import { normalizeProdi } from '../data/prodi';
-import { loadDatabaseSnapshot, queueDatabaseSync } from '../services/databaseSync';
+import { loadDatabaseSnapshot, queueDatabaseSync, resetDatabaseSync, setServerRevision, UnauthorizedError } from '../services/databaseSync';
+import { changePasswordRequest, createAccountRequest, deleteAccountRequest, getSession, loginRequest, logoutRequest, resetPasswordRequest, setupAdminRequest } from '../services/authApi';
 import { getDocumentVerificationUrl } from '../services/documentVerification';
 import { createSuratTugasNumber, getSuratTugasPeriod, getSuratTugasSignatory, normalizeSuratTugas } from '../services/suratTugasPolicy';
 import { ClaimSubmission, DosenProfile, FinalDocument, MonthlyResearchUpdate, Notification, OwnedRecord, Project, Publication, Prodi, SintaVerification, SuratKeterangan, SuratTugas, UserAccount, UserRole } from '../types';
@@ -22,27 +23,18 @@ type DatabaseSnapshot = {
 
 const StoreContext = createContext<StoreValue | null>(null);
 
-const legacyCredential = (codes: number[]) => String.fromCharCode(...codes);
-const unsafeDemoCredentials = new Set([
-  `${legacyCredential([97, 100, 109, 105, 110])}:${legacyCredential([97, 100, 109, 105, 110, 49, 50, 51])}`,
-  `${legacyCredential([100, 111, 115, 101, 110])}:${legacyCredential([100, 111, 115, 101, 110, 49, 50, 51])}`,
-]);
+// Older versions cached all data (including plaintext passwords) in localStorage. Remove it.
+const LEGACY_STORAGE_KEYS = [
+  'uppm_lecturer_profiles', 'uppm_accounts', 'uppm_current_user_id', 'uppm_projects', 'uppm_publications',
+  'uppm_surat', 'uppm_surat_tugas', 'uppm_sinta_verifications', 'uppm_claim_submissions',
+  'uppm_monthly_updates', 'uppm_notifications',
+];
 
-function readStorage<T>(key: string, fallback: T): T {
+function clearLegacyStorage() {
   try {
-    const saved = localStorage.getItem(key);
-    return saved ? JSON.parse(saved) as T : fallback;
-  } catch (error) {
-    console.warn(`Gagal membaca data ${key} dari localStorage.`, error);
-    return fallback;
-  }
-}
-
-function writeStorage<T>(key: string, value: T) {
-  try {
-    localStorage.setItem(key, JSON.stringify(value));
-  } catch (error) {
-    console.warn(`Gagal menyimpan data ${key} ke localStorage.`, error);
+    for (const key of LEGACY_STORAGE_KEYS) localStorage.removeItem(key);
+  } catch {
+    // Storage may be blocked; nothing to clean then.
   }
 }
 
@@ -50,10 +42,7 @@ function normalizeOwnedProdi<T extends { prodi?: string }>(items: T[]): T[] {
   return items.map(item => item.prodi ? { ...item, prodi: normalizeProdi(item.prodi) } : item);
 }
 
-function sanitizeAccounts(items: UserAccount[] = []) {
-  return normalizeOwnedProdi(items)
-    .filter(account => !unsafeDemoCredentials.has(`${account.username}:${account.password}`));
-}
+type ActionResult = { ok: boolean; error?: string };
 
 function createFinalDocument(
   type: FinalDocument['type'],
@@ -85,9 +74,8 @@ function useStoreState() {
   const [isDatabaseLoading, setIsDatabaseLoading] = useState(true);
   const [isDatabaseReady, setIsDatabaseReady] = useState(false);
   const [databaseError, setDatabaseError] = useState('');
-  const [currentUserId, setCurrentUserId] = useState<string | null>(() => {
-    return readStorage<string | null>('uppm_current_user_id', null);
-  });
+  const [sessionUser, setSessionUser] = useState<UserAccount | null>(null);
+  const [hasAdminAccount, setHasAdminAccount] = useState(true);
   const [projects, setProjects] = useState<Project[]>([]);
   const [publications, setPublications] = useState<Publication[]>([]);
   const [surat, setSurat] = useState<SuratKeterangan[]>([]);
@@ -98,9 +86,9 @@ function useStoreState() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const applyingRemoteSnapshot = useRef(false);
 
-  const currentUser = accounts.find(account => account.id === currentUserId) || null;
-  const isAdmin = currentUser?.role === 'admin';
-  const hasAdminAccount = accounts.some(account => account.role === 'admin');
+  const currentUser = sessionUser ? (accounts.find(account => account.id === sessionUser.id) || sessionUser) : null;
+  const isAdmin = sessionUser?.role === 'admin';
+  const sessionUserId = sessionUser?.id || null;
 
   const withOwner = <T extends object>(payload: T): T & OwnedRecord => {
     if (!currentUser) return payload;
@@ -127,14 +115,55 @@ function useStoreState() {
   const visibleClaimSubmissions = claimSubmissions.filter(canSee);
   const visibleMonthlyUpdates = monthlyUpdates.filter(canSee);
 
+  const resetData = () => {
+    applyingRemoteSnapshot.current = true;
+    setAccounts([]);
+    setProjects([]);
+    setPublications([]);
+    setSurat([]);
+    setSuratTugas([]);
+    setSintaVerifications([]);
+    setClaimSubmissions([]);
+    setMonthlyUpdates([]);
+    setNotifications([]);
+    setIsDatabaseReady(false);
+    resetDatabaseSync();
+  };
+
+  // 1) Ask the server who is logged in (session cookie) and whether an admin exists.
   useEffect(() => {
+    clearLegacyStorage();
     let cancelled = false;
+    void getSession().then(result => {
+      if (cancelled) return;
+      if (result.ok) {
+        setSessionUser(result.user);
+        setHasAdminAccount(result.hasAdmin);
+        setDatabaseError('');
+      } else {
+        setDatabaseError('error' in result ? result.error : 'Database MySQL tidak dapat dihubungi.');
+      }
+      if (!result.ok || !result.user) setIsDatabaseLoading(false);
+    });
+    const onUnauthorized = () => setSessionUser(null);
+    window.addEventListener('uppm:unauthorized', onUnauthorized);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('uppm:unauthorized', onUnauthorized);
+    };
+  }, []);
+
+  // 2) While logged in: load the snapshot and poll for changes.
+  useEffect(() => {
+    if (!sessionUserId) return;
+    let cancelled = false;
+    setIsDatabaseLoading(true);
 
     const applySnapshot = (snapshot: DatabaseSnapshot) => {
       applyingRemoteSnapshot.current = true;
       const profiles = normalizeOwnedProdi(snapshot.lecturerProfiles?.length ? snapshot.lecturerProfiles : defaultLecturerProfiles);
       setLecturerProfiles(profiles);
-      setAccounts(sanitizeAccounts(snapshot.accounts || []).map(account => {
+      setAccounts(normalizeOwnedProdi(snapshot.accounts || []).map(account => {
         const profile = profiles.find(item => item.id === account.dosenId);
         return profile ? { ...account, nama: profile.nama, nuptk: profile.nuptk, prodi: profile.prodi || account.prodi } : account;
       }));
@@ -156,6 +185,10 @@ function useStoreState() {
         setDatabaseError('');
         setIsDatabaseReady(true);
       } catch (error) {
+        if (error instanceof UnauthorizedError) {
+          if (!cancelled) setSessionUser(null);
+          return;
+        }
         console.error('Database MySQL tidak dapat dimuat.', error);
         if (initial) {
           setDatabaseError(error instanceof Error ? error.message : 'Database MySQL tidak dapat dimuat.');
@@ -173,62 +206,9 @@ function useStoreState() {
       cancelled = true;
       window.clearInterval(pollTimer);
     };
-  }, []);
+  }, [sessionUserId]);
 
-  useEffect(() => {
-    if (!isDatabaseReady) return;
-    writeStorage('uppm_lecturer_profiles', lecturerProfiles);
-  }, [lecturerProfiles, isDatabaseReady]);
-
-  useEffect(() => {
-    if (!isDatabaseReady) return;
-    writeStorage('uppm_accounts', accounts);
-  }, [accounts, isDatabaseReady]);
-
-  useEffect(() => {
-    writeStorage('uppm_current_user_id', currentUserId);
-  }, [currentUserId]);
-
-  useEffect(() => {
-    if (!isDatabaseReady) return;
-    writeStorage('uppm_projects', projects);
-  }, [projects, isDatabaseReady]);
-
-  useEffect(() => {
-    if (!isDatabaseReady) return;
-    writeStorage('uppm_publications', publications);
-  }, [publications, isDatabaseReady]);
-
-  useEffect(() => {
-    if (!isDatabaseReady) return;
-    writeStorage('uppm_surat', surat);
-  }, [surat, isDatabaseReady]);
-
-  useEffect(() => {
-    if (!isDatabaseReady) return;
-    writeStorage('uppm_surat_tugas', suratTugas);
-  }, [suratTugas, isDatabaseReady]);
-
-  useEffect(() => {
-    if (!isDatabaseReady) return;
-    writeStorage('uppm_sinta_verifications', sintaVerifications);
-  }, [sintaVerifications, isDatabaseReady]);
-
-  useEffect(() => {
-    if (!isDatabaseReady) return;
-    writeStorage('uppm_claim_submissions', claimSubmissions);
-  }, [claimSubmissions, isDatabaseReady]);
-
-  useEffect(() => {
-    if (!isDatabaseReady) return;
-    writeStorage('uppm_monthly_updates', monthlyUpdates);
-  }, [monthlyUpdates, isDatabaseReady]);
-
-  useEffect(() => {
-    if (!isDatabaseReady) return;
-    writeStorage('uppm_notifications', notifications);
-  }, [notifications, isDatabaseReady]);
-
+  // Accounts are not part of the snapshot sync: they change only through /api/accounts.
   useEffect(() => {
     if (!isDatabaseReady) return;
     if (applyingRemoteSnapshot.current) {
@@ -238,7 +218,6 @@ function useStoreState() {
 
     queueDatabaseSync({
       lecturerProfiles,
-      accounts,
       projects,
       publications,
       surat,
@@ -248,27 +227,24 @@ function useStoreState() {
       monthlyUpdates,
       notifications,
     });
-  }, [lecturerProfiles, accounts, projects, publications, surat, suratTugas, sintaVerifications, claimSubmissions, monthlyUpdates, notifications, isDatabaseReady]);
+  }, [lecturerProfiles, projects, publications, surat, suratTugas, sintaVerifications, claimSubmissions, monthlyUpdates, notifications, isDatabaseReady]);
 
-  const login = (username: string, password: string, role: UserRole) => {
-    const normalizedUsername = username.trim().toLowerCase();
-    const credentialsAccount = accounts.find(item => item.username.toLowerCase() === normalizedUsername && item.password === password);
-
-    if (!credentialsAccount) {
-      return { ok: false, error: 'Username atau password tidak sesuai.' };
-    }
-
-    if (credentialsAccount.role !== role) {
-      const actualRole = credentialsAccount.role === 'admin' ? 'Admin' : 'Dosen';
-      return { ok: false, error: `Akun ini terdaftar sebagai ${actualRole}. Pilih login ${actualRole}.` };
-    }
-
-    setCurrentUserId(credentialsAccount.id);
+  const login = async (username: string, password: string, role: UserRole, turnstileToken?: string): Promise<ActionResult> => {
+    const result = await loginRequest({ username: username.trim(), password, role, turnstileToken });
+    if (!result.ok) return result;
+    resetData();
+    setSessionUser(result.user);
     return { ok: true };
   };
 
-  const logout = () => {
-    setCurrentUserId(null);
+  const logout = async () => {
+    await logoutRequest();
+    resetData();
+    setSessionUser(null);
+  };
+
+  const changeOwnPassword = async (currentPassword: string, newPassword: string): Promise<ActionResult> => {
+    return changePasswordRequest({ currentPassword, newPassword });
   };
 
   const updateLecturerNuptk = (id: string, nuptkValue: string) => {
@@ -302,29 +278,23 @@ function useStoreState() {
     return { ok: true };
   };
 
-  const createInitialAdmin = (payload: { username: string; password: string; nama: string }) => {
+  const createInitialAdmin = async (payload: { username: string; password: string; nama: string; turnstileToken?: string }): Promise<ActionResult> => {
     const username = payload.username.trim();
-    const password = payload.password.trim();
     const nama = payload.nama.trim() || 'Administrator UPPM';
 
     if (hasAdminAccount) return { ok: false, error: 'Akun admin sudah tersedia.' };
     if (username.length < 4) return { ok: false, error: 'Username admin minimal 4 karakter.' };
-    if (password.length < 8) return { ok: false, error: 'Password admin minimal 8 karakter.' };
+    if (payload.password.length < 8) return { ok: false, error: 'Password admin minimal 8 karakter.' };
 
-    const newAdmin: UserAccount = {
-      id: `admin-${Date.now()}`,
-      username,
-      password,
-      role: 'admin',
-      nama,
-    };
-
-    setAccounts([newAdmin]);
-    setCurrentUserId(newAdmin.id);
+    const result = await setupAdminRequest({ username, password: payload.password, nama, turnstileToken: payload.turnstileToken });
+    if (!result.ok) return result;
+    resetData();
+    setHasAdminAccount(true);
+    setSessionUser(result.user);
     return { ok: true };
   };
 
-  const createDosenAccount = (payload: { dosenId: string; username: string; password: string }) => {
+  const createDosenAccount = async (payload: { dosenId: string; username: string; password: string }): Promise<ActionResult> => {
     if (!isAdmin) return { ok: false, error: 'Hanya admin yang dapat membuat akun dosen.' };
     const username = payload.username.trim();
     const lecturer = lecturerProfiles.find(dosen => dosen.id === payload.dosenId);
@@ -335,26 +305,33 @@ function useStoreState() {
       return { ok: false, error: 'Username sudah dipakai.' };
     }
 
-    const newAccount: UserAccount = {
-      id: `user-${Date.now()}`,
+    const result = await createAccountRequest({
+      dosenId: lecturer.id,
       username,
       password: payload.password,
-      role: 'dosen',
-      dosenId: lecturer.id,
       nama: lecturer.nama,
       prodi: lecturer.prodi,
       nuptk: lecturer.nuptk,
-    };
-
-    setAccounts(prev => [newAccount, ...prev]);
+    });
+    if (!result.ok) return result;
+    setServerRevision(result.revision);
+    setAccounts(prev => [result.account, ...prev]);
     return { ok: true };
   };
 
-  const deleteAccount = (id: string) => {
-    if (!isAdmin) return;
-    if (id === 'admin') return;
+  const deleteAccount = async (id: string): Promise<ActionResult> => {
+    if (!isAdmin) return { ok: false, error: 'Hanya admin yang dapat menghapus akun.' };
+    if (id === sessionUser?.id) return { ok: false, error: 'Tidak dapat menghapus akun sendiri.' };
+    const result = await deleteAccountRequest(id);
+    if (!result.ok) return result;
+    setServerRevision(result.revision);
     setAccounts(prev => prev.filter(account => account.id !== id));
-    if (currentUserId === id) setCurrentUserId(null);
+    return { ok: true };
+  };
+
+  const resetAccountPassword = async (id: string, password: string): Promise<ActionResult> => {
+    if (!isAdmin) return { ok: false, error: 'Hanya admin yang dapat mereset password.' };
+    return resetPasswordRequest(id, password);
   };
 
   const addProject = (project: Omit<Project, 'id'>) => {
@@ -580,6 +557,8 @@ function useStoreState() {
     updateLecturerNuptk,
     createLecturerProfile,
     deleteAccount,
+    resetAccountPassword,
+    changeOwnPassword,
     lecturerProfiles,
     allProjects: projects,
     allPublications: publications,

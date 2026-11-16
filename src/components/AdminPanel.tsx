@@ -1,12 +1,12 @@
 import { useMemo, useState, type FormEvent } from 'react';
-import { Save, Trash2, UserPlus, UsersRound } from 'lucide-react';
+import { KeyRound, Save, Trash2, UserPlus, UsersRound } from 'lucide-react';
 import { getLecturerDisplay } from '../data/lecturers';
 import { useStore } from '../store/useStore';
 import { PRODI_OPTIONS } from '../data/prodi';
 import type { Prodi } from '../types';
 
 export default function AdminPanel() {
-  const { accounts, allClaimSubmissions, allSintaVerifications, allSuratTugas, createDosenAccount, createLecturerProfile, deleteAccount, lecturerProfiles, updateLecturerNuptk } = useStore();
+  const { accounts, allClaimSubmissions, allSintaVerifications, allSuratTugas, createDosenAccount, createLecturerProfile, deleteAccount, lecturerProfiles, resetAccountPassword, updateLecturerNuptk } = useStore();
   const firstLecturer = lecturerProfiles[0]?.id || '';
   const [dosenId, setDosenId] = useState(firstLecturer);
   const [username, setUsername] = useState('');
@@ -17,17 +17,37 @@ export default function AdminPanel() {
   const [newLecturerName, setNewLecturerName] = useState('');
   const [newLecturerNuptk, setNewLecturerNuptk] = useState('');
   const [newLecturerProdi, setNewLecturerProdi] = useState<Prodi | ''>('');
+  const [isSaving, setIsSaving] = useState(false);
+  const [resetTarget, setResetTarget] = useState<string | null>(null);
+  const [resetValue, setResetValue] = useState('');
 
   const dosenAccounts = accounts.filter(account => account.role === 'dosen');
   const accountDosenIds = useMemo(() => new Set(dosenAccounts.map(account => account.dosenId).filter(Boolean)), [dosenAccounts]);
 
-  const handleSubmit = (event: FormEvent) => {
+  const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
-    const result = createDosenAccount({ dosenId, username, password });
+    setIsSaving(true);
+    const result = await createDosenAccount({ dosenId, username, password });
+    setIsSaving(false);
     setMessage(result.ok ? 'Akun dosen berhasil dibuat.' : result.error || 'Gagal membuat akun.');
     if (result.ok) {
       setUsername('');
       setPassword('');
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    const result = await deleteAccount(id);
+    setMessage(result.ok ? 'Akun dosen dihapus.' : result.error || 'Gagal menghapus akun.');
+  };
+
+  const handleResetPassword = async (event: FormEvent, id: string) => {
+    event.preventDefault();
+    const result = await resetAccountPassword(id, resetValue);
+    setMessage(result.ok ? 'Password akun berhasil direset.' : result.error || 'Gagal mereset password.');
+    if (result.ok) {
+      setResetTarget(null);
+      setResetValue('');
     }
   };
 
@@ -82,11 +102,11 @@ export default function AdminPanel() {
               </div>
               <div className="space-y-2">
                 <label className="text-sm font-semibold text-slate-700">Password</label>
-                <input value={password} onChange={(event) => setPassword(event.target.value)} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500" />
+                <input type="password" autoComplete="new-password" minLength={8} value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Minimal 8 karakter" className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500" />
               </div>
             </div>
             {message && <p className="text-sm text-slate-600 bg-slate-50 border border-slate-100 rounded-lg p-3">{message}</p>}
-            <button type="submit" className="w-full px-5 py-3 bg-red-700 text-white rounded-lg font-semibold hover:bg-red-800 transition-colors flex items-center justify-center gap-2">
+            <button type="submit" disabled={isSaving} className="w-full px-5 py-3 bg-red-700 text-white rounded-lg font-semibold hover:bg-red-800 transition-colors flex items-center justify-center gap-2 disabled:opacity-50">
               <Save className="w-5 h-5" />
               <span>Simpan Akun</span>
             </button>
@@ -120,9 +140,22 @@ export default function AdminPanel() {
                     <td className="p-4 text-slate-600">{account.nuptk}</td>
                     <td className="p-4 text-slate-600">{accountDosenIds.has(account.dosenId) ? 'Aktif' : 'Belum lengkap'}</td>
                     <td className="p-4 text-right">
-                      <button onClick={() => deleteAccount(account.id)} className="p-2 text-slate-400 hover:text-red-700 hover:bg-red-50 rounded-lg">
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                      {resetTarget === account.id ? (
+                        <form onSubmit={(event) => handleResetPassword(event, account.id)} className="flex items-center justify-end gap-2">
+                          <input type="password" autoComplete="new-password" minLength={8} required value={resetValue} onChange={(event) => setResetValue(event.target.value)} aria-label={`Password baru ${account.username}`} placeholder="Password baru" className="w-36 rounded-lg border border-slate-200 px-2 py-1.5" />
+                          <button type="submit" className="rounded-lg bg-red-700 px-3 py-1.5 font-semibold text-white hover:bg-red-800">Simpan</button>
+                          <button type="button" onClick={() => { setResetTarget(null); setResetValue(''); }} className="rounded-lg px-2 py-1.5 text-slate-500 hover:bg-slate-100">Batal</button>
+                        </form>
+                      ) : (
+                        <div className="flex items-center justify-end gap-1">
+                          <button onClick={() => { setResetTarget(account.id); setResetValue(''); }} title="Reset password" aria-label={`Reset password ${account.username}`} className="p-2 text-slate-400 hover:text-red-700 hover:bg-red-50 rounded-lg">
+                            <KeyRound className="w-4 h-4" />
+                          </button>
+                          <button onClick={() => handleDelete(account.id)} title="Hapus akun" aria-label={`Hapus akun ${account.username}`} className="p-2 text-slate-400 hover:text-red-700 hover:bg-red-50 rounded-lg">
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      )}
                     </td>
                   </tr>
                 ))}

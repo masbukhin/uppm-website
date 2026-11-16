@@ -25,6 +25,7 @@ if [ ! -f .env ]; then
   app_pw=$(openssl rand -hex 24)
   sed -i "s/^MYSQL_ROOT_PASSWORD=.*/MYSQL_ROOT_PASSWORD=$root_pw/" .env
   sed -i "s/^MYSQL_PASSWORD=.*/MYSQL_PASSWORD=$app_pw/" .env
+  sed -i "s/^SESSION_SECRET=.*/SESSION_SECRET=$(openssl rand -hex 32)/" .env
   chmod 600 .env
   echo "Created $APP_DIR/.env with random DB passwords. Edit APP_ORIGIN / APP_PORT / TURNSTILE_SECRET_KEY as needed."
 fi

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Award, BarChart3, Bell, CalendarDays, CircleDollarSign, FileCheck2, FileSignature, LayoutDashboard, LogOut, Menu, ShieldCheck, X } from 'lucide-react';
+import { Award, BarChart3, Bell, CalendarDays, CircleDollarSign, FileCheck2, FileSignature, KeyRound, LayoutDashboard, LogOut, Menu, ShieldCheck, X } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import NotificationBell from './NotificationBell';
 
@@ -22,6 +22,7 @@ export default function Layout({ children, activeTab, setActiveTab }: LayoutProp
     { id: 'surat-tugas', label: isAdmin ? 'Validasi Surat Tugas' : 'Ajukan Surat Tugas', icon: FileSignature, roles: ['admin', 'dosen'] },
     { id: 'sinta-verifikator', label: isAdmin ? 'Validasi Data SINTA' : 'Ajukan Data SINTA', icon: FileCheck2, roles: ['admin', 'dosen'] },
     { id: 'klaim', label: isAdmin ? 'Validasi Klaim' : 'Ajukan Klaim', icon: Award, roles: ['admin', 'dosen'] },
+    { id: 'account', label: 'Akun Saya', icon: KeyRound, roles: ['admin', 'dosen'] },
   ].filter(item => item.roles.includes(isAdmin ? 'admin' : 'dosen'));
 
   const handleSelect = (tab: string) => {

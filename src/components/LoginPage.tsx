@@ -47,23 +47,6 @@ export default function LoginPage() {
     window.turnstile?.reset();
   };
 
-  const verifyTurnstile = async () => {
-    if (!turnstileSiteKey) return { ok: true };
-
-    const response = await fetch('/api/verify-turnstile', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ token: humanToken }),
-    });
-    const result = await response.json().catch(() => ({ ok: false, error: 'Respons verifikasi tidak valid.' }));
-
-    if (!response.ok || !result.ok) {
-      return { ok: false, error: result.error || 'Verifikasi Cloudflare gagal.' };
-    }
-
-    return { ok: true };
-  };
-
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
     setError('');
@@ -86,16 +69,11 @@ export default function LoginPage() {
     setIsSubmitting(true);
 
     try {
-      const verified = await verifyTurnstile();
-      if (!verified.ok) {
-        setError(verified.error || 'Verifikasi Cloudflare gagal.');
-        resetTurnstile();
-        return;
-      }
-
+      // The Turnstile token is verified by the server as part of login/setup.
+      const turnstileToken = turnstileSiteKey ? humanToken : undefined;
       const result = hasAdminAccount
-        ? login(username, password, selectedRole)
-        : createInitialAdmin({ username, password, nama: adminName });
+        ? await login(username, password, selectedRole, turnstileToken)
+        : await createInitialAdmin({ username, password, nama: adminName, turnstileToken });
 
       if (!result.ok) {
         setError(result.error || 'Proses gagal.');

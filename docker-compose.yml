@@ -27,6 +27,9 @@ services:
       MYSQL_CONNECTION_LIMIT: ${MYSQL_CONNECTION_LIMIT:-10}
       MYSQL_SSL: "false"
       TURNSTILE_SECRET_KEY: ${TURNSTILE_SECRET_KEY:-}
+      SESSION_SECRET: ${SESSION_SECRET:?SESSION_SECRET wajib diisi di .env (min 32 karakter)}
+      # true when the site is served over HTTPS (Caddy/Nginx). Auto-detected via X-Forwarded-Proto otherwise.
+      COOKIE_SECURE: ${COOKIE_SECURE:-}
       JSON_BODY_LIMIT: ${JSON_BODY_LIMIT:-25mb}
     ports:
       - "${APP_BIND:-0.0.0.0}:${APP_PORT:-8080}:4100"

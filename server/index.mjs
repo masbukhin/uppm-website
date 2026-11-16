@@ -1,11 +1,17 @@
 import 'dotenv/config';
 import dotenv from 'dotenv';
 import express from 'express';
-import { createMysqlStore } from './mysql.mjs';
-import { findVerifiedDocument } from './document-verification.mjs';
-import verifyTurnstile from '../api/verify-turnstile.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
+import { createMysqlStore } from './mysql.mjs';
+import { findVerifiedDocument } from './document-verification.mjs';
+import { filterSnapshotForUser, mergeSnapshotForUser } from './access.mjs';
+import { turnstileEnabled, verifyTurnstileToken } from './turnstile.mjs';
+import {
+  clearLoginFailures, clearSessionCookie, createSessionToken, hashPassword, initSessionSecret, isLoginBlocked,
+  passwordVersion, publicAccount, readCookie, readSessionToken, recordLoginFailure, setSessionCookie,
+  validateNewPassword, verifyPassword,
+} from './auth.mjs';
 
 dotenv.config({ path: '.env.local', override: false });
 
@@ -14,36 +20,228 @@ const port = Number(process.env.PORT || 4100);
 const sintaCache = new Map();
 const SINTA_CACHE_TTL = 5 * 60 * 1000;
 
-app.use((request, response, next) => {
-  response.setHeader('Access-Control-Allow-Origin', process.env.APP_ORIGIN || 'http://localhost:3000');
-  response.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  response.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
-  if (request.method === 'OPTIONS') return response.sendStatus(204);
+// Behind Caddy/Nginx/Docker networks: trust private-network proxies for req.ip and req.secure.
+app.set('trust proxy', process.env.TRUST_PROXY || 'loopback, linklocal, uniquelocal');
+app.disable('x-powered-by');
+
+app.use((_request, response, next) => {
+  response.setHeader('X-Content-Type-Options', 'nosniff');
+  response.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  response.setHeader('X-Frame-Options', 'SAMEORIGIN');
   next();
 });
 app.use(express.json({ limit: process.env.JSON_BODY_LIMIT || '25mb' }));
 
+// CSRF guard: state-changing API calls must be JSON (cross-site forms cannot send that without CORS).
+app.use('/api', (request, response, next) => {
+  // request.is() returns null when there is no body (e.g. DELETE), false for a non-JSON body.
+  if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(request.method) && request.is('application/json') === false) {
+    return response.status(415).json({ ok: false, error: 'Content-Type harus application/json.' });
+  }
+  next();
+});
+
 let store;
 try {
+  initSessionSecret();
   store = await createMysqlStore();
 } catch (error) {
-  console.error('MySQL tidak dapat diinisialisasi:', error.message);
-  console.error('Isi MYSQL_HOST, MYSQL_PORT, MYSQL_USER, MYSQL_PASSWORD, dan MYSQL_DATABASE di .env.local.');
+  console.error('Backend tidak dapat diinisialisasi:', error.message);
+  console.error('Periksa MYSQL_* dan SESSION_SECRET di .env / .env.local.');
   process.exit(1);
 }
+
+// ---------- Auth helpers ----------
+
+async function sessionUser(request) {
+  const session = readSessionToken(readCookie(request));
+  if (!session) return null;
+  const account = await store.getAccountById(session.sub);
+  if (!account || account.role !== session.role || passwordVersion(account.password) !== session.pv) return null;
+  return account;
+}
+
+function requireAuth(role) {
+  return async (request, response, next) => {
+    try {
+      const user = await sessionUser(request);
+      if (!user) return response.status(401).json({ ok: false, error: 'Sesi berakhir. Silakan login kembali.' });
+      if (role && user.role !== role) return response.status(403).json({ ok: false, error: 'Akses ditolak.' });
+      request.user = user;
+      next();
+    } catch (error) {
+      console.error('Session check failed:', error);
+      response.status(503).json({ ok: false, error: 'Database tidak tersedia.' });
+    }
+  };
+}
+
+async function checkHuman(request) {
+  if (!turnstileEnabled()) return { ok: true };
+  return verifyTurnstileToken(request.body?.turnstileToken, request.ip);
+}
+
+function startSession(request, response, account) {
+  setSessionCookie(request, response, createSessionToken(account));
+  return publicAccount(account);
+}
+
+// ---------- Public endpoints ----------
 
 app.get('/api/health', async (_request, response) => {
   try {
     response.json({ ok: true, database: await store.health() });
   } catch (error) {
-    response.status(503).json({ ok: false, error: error.message });
+    response.status(503).json({ ok: false, error: 'Database tidak tersedia.' });
   }
 });
 
-app.get('/api/snapshot', async (_request, response) => {
+app.get('/api/auth/session', async (request, response) => {
+  try {
+    const [user, hasAdmin] = await Promise.all([sessionUser(request), store.hasAdmin()]);
+    response.json({ ok: true, user: publicAccount(user), hasAdmin });
+  } catch (error) {
+    console.error('Session lookup failed:', error);
+    response.status(503).json({ ok: false, error: 'Database MySQL tidak dapat dihubungi.' });
+  }
+});
+
+app.post('/api/auth/login', async (request, response) => {
+  const username = String(request.body?.username || '').trim();
+  const password = String(request.body?.password || '');
+  const role = request.body?.role;
+  if (isLoginBlocked(request.ip, username)) {
+    return response.status(429).json({ ok: false, error: 'Terlalu banyak percobaan login. Coba lagi 15 menit lagi.' });
+  }
+  const human = await checkHuman(request);
+  if (!human.ok) return response.status(human.status).json({ ok: false, error: human.error });
+
+  try {
+    const account = username ? await store.findAccountByUsername(username) : null;
+    if (!account || !verifyPassword(password, account.password)) {
+      recordLoginFailure(request.ip, username);
+      return response.status(401).json({ ok: false, error: 'Username atau password tidak sesuai.' });
+    }
+    if (role && account.role !== role) {
+      const actualRole = account.role === 'admin' ? 'Admin' : 'Dosen';
+      return response.status(400).json({ ok: false, error: `Akun ini terdaftar sebagai ${actualRole}. Pilih login ${actualRole}.` });
+    }
+    clearLoginFailures(request.ip, username);
+    response.json({ ok: true, user: startSession(request, response, account) });
+  } catch (error) {
+    console.error('Login failed:', error);
+    response.status(503).json({ ok: false, error: 'Database tidak tersedia.' });
+  }
+});
+
+// First-run only: creates the first admin when no admin exists yet.
+app.post('/api/auth/setup', async (request, response) => {
+  const username = String(request.body?.username || '').trim();
+  const password = String(request.body?.password || '');
+  const nama = String(request.body?.nama || '').trim() || 'Administrator UPPM';
+  if (username.length < 4) return response.status(400).json({ ok: false, error: 'Username admin minimal 4 karakter.' });
+  const passwordError = validateNewPassword(password);
+  if (passwordError) return response.status(400).json({ ok: false, error: passwordError });
+  const human = await checkHuman(request);
+  if (!human.ok) return response.status(human.status).json({ ok: false, error: human.error });
+
+  try {
+    const account = { id: `admin-${Date.now()}`, username, password: hashPassword(password), role: 'admin', nama };
+    await store.createAccount(account, { onlyIfNoAdmin: true });
+    response.json({ ok: true, user: startSession(request, response, account) });
+  } catch (error) {
+    if (error.code === 'ADMIN_EXISTS' || error.code === 'USERNAME_TAKEN') return response.status(409).json({ ok: false, error: error.message });
+    console.error('Admin setup failed:', error);
+    response.status(503).json({ ok: false, error: 'Database tidak tersedia.' });
+  }
+});
+
+app.post('/api/auth/logout', (request, response) => {
+  clearSessionCookie(request, response);
+  response.json({ ok: true });
+});
+
+app.post('/api/auth/password', requireAuth(), async (request, response) => {
+  const currentPassword = String(request.body?.currentPassword || '');
+  const newPassword = String(request.body?.newPassword || '');
+  if (!verifyPassword(currentPassword, request.user.password)) {
+    return response.status(400).json({ ok: false, error: 'Password lama tidak sesuai.' });
+  }
+  const passwordError = validateNewPassword(newPassword);
+  if (passwordError) return response.status(400).json({ ok: false, error: passwordError });
+  try {
+    const hash = hashPassword(newPassword);
+    await store.setAccountPassword(request.user.id, hash);
+    startSession(request, response, { ...request.user, password: hash });
+    response.json({ ok: true });
+  } catch (error) {
+    console.error('Password change failed:', error);
+    response.status(503).json({ ok: false, error: 'Database tidak tersedia.' });
+  }
+});
+
+// ---------- Accounts (admin only) ----------
+
+app.post('/api/accounts', requireAuth('admin'), async (request, response) => {
+  const username = String(request.body?.username || '').trim();
+  const password = String(request.body?.password || '');
+  const dosenId = String(request.body?.dosenId || '').trim();
+  const nama = String(request.body?.nama || '').trim();
+  if (!username || !dosenId || !nama) return response.status(400).json({ ok: false, error: 'Dosen, username, dan password wajib diisi.' });
+  const passwordError = validateNewPassword(password);
+  if (passwordError) return response.status(400).json({ ok: false, error: passwordError });
+
+  const account = {
+    id: `user-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    username,
+    password: hashPassword(password),
+    role: 'dosen',
+    dosenId,
+    nama,
+    ...(request.body?.prodi ? { prodi: String(request.body.prodi) } : {}),
+    ...(request.body?.nuptk ? { nuptk: String(request.body.nuptk) } : {}),
+  };
+  try {
+    const result = await store.createAccount(account);
+    response.json({ ok: true, account: publicAccount(account), revision: result.revision });
+  } catch (error) {
+    if (error.code === 'USERNAME_TAKEN') return response.status(409).json({ ok: false, error: error.message });
+    console.error('Account create failed:', error);
+    response.status(503).json({ ok: false, error: 'Database tidak tersedia.' });
+  }
+});
+
+app.delete('/api/accounts/:id', requireAuth('admin'), async (request, response) => {
+  if (request.params.id === request.user.id) return response.status(400).json({ ok: false, error: 'Tidak dapat menghapus akun sendiri.' });
+  try {
+    const result = await store.deleteAccount(request.params.id);
+    response.json({ ok: true, deleted: result.deleted, revision: result.revision });
+  } catch (error) {
+    console.error('Account delete failed:', error);
+    response.status(503).json({ ok: false, error: 'Database tidak tersedia.' });
+  }
+});
+
+app.post('/api/accounts/:id/password', requireAuth('admin'), async (request, response) => {
+  const password = String(request.body?.password || '');
+  const passwordError = validateNewPassword(password);
+  if (passwordError) return response.status(400).json({ ok: false, error: passwordError });
+  try {
+    const updated = await store.setAccountPassword(request.params.id, hashPassword(password));
+    if (!updated) return response.status(404).json({ ok: false, error: 'Akun tidak ditemukan.' });
+    response.json({ ok: true });
+  } catch (error) {
+    console.error('Password reset failed:', error);
+    response.status(503).json({ ok: false, error: 'Database tidak tersedia.' });
+  }
+});
+
+// ---------- Snapshot (login required, filtered per user) ----------
+
+app.get('/api/snapshot', requireAuth(), async (request, response) => {
   try {
     const result = await store.loadSnapshot();
-    response.json({ ok: true, ...result });
+    response.json({ ok: true, revision: result.revision, payload: filterSnapshotForUser(request.user, result.payload) });
   } catch (error) {
     console.error('MySQL read failed:', error);
     response.status(500).json({ ok: false, error: 'Gagal membaca data MySQL.' });
@@ -61,9 +259,10 @@ app.get('/api/verify', async (request, response) => {
   }
 });
 
-app.post('/api/snapshot', async (request, response) => {
+app.post('/api/snapshot', requireAuth(), async (request, response) => {
   try {
-    const result = await store.saveSnapshot(request.body?.payload || {}, request.body?.baseRevision);
+    const incoming = request.body?.payload || {};
+    const result = await store.saveSnapshot(incoming, request.body?.baseRevision, current => mergeSnapshotForUser(request.user, incoming, current));
     response.json({ ok: true, ...result, createdAt: new Date().toISOString() });
   } catch (error) {
     if (error.code === 'REVISION_CONFLICT') {
@@ -74,18 +273,7 @@ app.post('/api/snapshot', async (request, response) => {
   }
 });
 
-app.get('/api/records', async (request, response) => {
-  try {
-    const { payload } = await store.loadSnapshot();
-    const rows = Object.entries(payload).flatMap(([type, items]) => items.map(item => ({ type, payload: item })));
-    const ownerId = request.query.ownerId?.toString();
-    response.json(ownerId ? rows.filter(row => row.payload.ownerId === ownerId) : rows);
-  } catch (error) {
-    response.status(500).json({ ok: false, error: error.message });
-  }
-});
-
-app.get(['/api/sinta', '/api/sinta/:authorId'], async (request, response) => {
+app.get(['/api/sinta', '/api/sinta/:authorId'], requireAuth(), async (request, response) => {
   const authorId = request.params.authorId || request.query.authorId?.toString();
   const sourceUrl = request.query.sourceUrl?.toString();
   if (!authorId || !/^\d+$/.test(authorId)) {
@@ -107,7 +295,11 @@ app.get(['/api/sinta', '/api/sinta/:authorId'], async (request, response) => {
   }
 });
 
-app.post('/api/verify-turnstile', verifyTurnstile);
+app.post('/api/verify-turnstile', async (request, response) => {
+  const result = await verifyTurnstileToken(request.body?.token, request.ip);
+  if (!result.ok) return response.status(result.status).json({ ok: false, error: result.error });
+  response.json({ ok: true });
+});
 
 app.use('/api', (_request, response) => response.status(404).json({ ok: false, error: 'Endpoint tidak ditemukan.' }));
 

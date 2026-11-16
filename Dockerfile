@@ -22,7 +22,7 @@ ENV VITE_GEMINI_API_KEY=$VITE_GEMINI_API_KEY \
     VITE_TURNSTILE_SITE_KEY=$VITE_TURNSTILE_SITE_KEY \
     VITE_APP_URL=$VITE_APP_URL
 
-RUN npm run lint && node --test server/surat-tugas-policy.test.mjs && npm run build \
+RUN npm run lint && node --test server/*.test.mjs && npm run build \
   && npm prune --omit=dev
 
 # ---------- Runtime stage ----------
@@ -36,8 +36,6 @@ COPY --from=build --chown=node:node /app/node_modules ./node_modules
 COPY --from=build --chown=node:node /app/dist ./dist
 COPY --from=build --chown=node:node /app/server ./server
 COPY --from=build --chown=node:node /app/api ./api
-# Legacy SQLite snapshot: imported once into MySQL when MySQL is still empty.
-COPY --from=build --chown=node:node /app/data ./data
 
 USER node
 EXPOSE 4100
