@@ -1,11 +1,14 @@
-import { createContext, createElement, useContext, useEffect, useState, type ReactNode } from 'react';
-import { lecturerProfiles } from '../data/lecturers';
+import { createContext, createElement, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
+import { lecturerProfiles as defaultLecturerProfiles } from '../data/lecturers';
 import { normalizeProdi } from '../data/prodi';
 import { loadDatabaseSnapshot, queueDatabaseSync } from '../services/databaseSync';
-import { ClaimSubmission, FinalDocument, MonthlyResearchUpdate, Notification, OwnedRecord, Project, Publication, SintaVerification, SuratKeterangan, SuratTugas, UserAccount } from '../types';
+import { getDocumentVerificationUrl } from '../services/documentVerification';
+import { createSuratTugasNumber, getSuratTugasPeriod, getSuratTugasSignatory, normalizeSuratTugas } from '../services/suratTugasPolicy';
+import { ClaimSubmission, DosenProfile, FinalDocument, MonthlyResearchUpdate, Notification, OwnedRecord, Project, Publication, Prodi, SintaVerification, SuratKeterangan, SuratTugas, UserAccount, UserRole } from '../types';
 
 type StoreValue = ReturnType<typeof useStoreState>;
 type DatabaseSnapshot = {
+  lecturerProfiles?: DosenProfile[];
   accounts?: UserAccount[];
   projects?: Project[];
   publications?: Publication[];
@@ -62,7 +65,7 @@ function createFinalDocument(
   const approvedAt = new Date().toISOString();
   const uniqueToken = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
   const documentId = `doc-${type}-${uniqueToken}`;
-  const barcodePayload = `${documentId}|${type}|${number}|${title}|${approvedAt}|${approvedBy}`;
+  const barcodePayload = getDocumentVerificationUrl(documentId);
 
   return {
     id: documentId,
@@ -77,6 +80,7 @@ function createFinalDocument(
 }
 
 function useStoreState() {
+  const [lecturerProfiles, setLecturerProfiles] = useState<DosenProfile[]>(defaultLecturerProfiles);
   const [accounts, setAccounts] = useState<UserAccount[]>([]);
   const [isDatabaseLoading, setIsDatabaseLoading] = useState(true);
   const [isDatabaseReady, setIsDatabaseReady] = useState(false);
@@ -92,6 +96,7 @@ function useStoreState() {
   const [claimSubmissions, setClaimSubmissions] = useState<ClaimSubmission[]>([]);
   const [monthlyUpdates, setMonthlyUpdates] = useState<MonthlyResearchUpdate[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const applyingRemoteSnapshot = useRef(false);
 
   const currentUser = accounts.find(account => account.id === currentUserId) || null;
   const isAdmin = currentUser?.role === 'admin';
@@ -125,36 +130,55 @@ function useStoreState() {
   useEffect(() => {
     let cancelled = false;
 
-    loadDatabaseSnapshot<DatabaseSnapshot>()
-      .then(snapshot => {
-        if (cancelled || !snapshot) return;
+    const applySnapshot = (snapshot: DatabaseSnapshot) => {
+      applyingRemoteSnapshot.current = true;
+      const profiles = normalizeOwnedProdi(snapshot.lecturerProfiles?.length ? snapshot.lecturerProfiles : defaultLecturerProfiles);
+      setLecturerProfiles(profiles);
+      setAccounts(sanitizeAccounts(snapshot.accounts || []).map(account => {
+        const profile = profiles.find(item => item.id === account.dosenId);
+        return profile ? { ...account, nama: profile.nama, nuptk: profile.nuptk, prodi: profile.prodi || account.prodi } : account;
+      }));
+      setProjects(normalizeOwnedProdi(snapshot.projects || []));
+      setPublications(snapshot.publications || []);
+      setSurat(normalizeOwnedProdi(snapshot.surat || []));
+      setSuratTugas(normalizeOwnedProdi(snapshot.suratTugas || []).map(normalizeSuratTugas));
+      setSintaVerifications(normalizeOwnedProdi(snapshot.sintaVerifications || []));
+      setClaimSubmissions(normalizeOwnedProdi(snapshot.claimSubmissions || []));
+      setMonthlyUpdates(normalizeOwnedProdi(snapshot.monthlyUpdates || []));
+      setNotifications(snapshot.notifications || []);
+    };
 
-        setAccounts(sanitizeAccounts(snapshot.accounts || []));
-        setProjects(normalizeOwnedProdi(snapshot.projects || []));
-        setPublications(snapshot.publications || []);
-        setSurat(normalizeOwnedProdi(snapshot.surat || []));
-        setSuratTugas(normalizeOwnedProdi(snapshot.suratTugas || []));
-        setSintaVerifications(normalizeOwnedProdi(snapshot.sintaVerifications || []));
-        setClaimSubmissions(normalizeOwnedProdi(snapshot.claimSubmissions || []));
-        setMonthlyUpdates(normalizeOwnedProdi(snapshot.monthlyUpdates || []));
-        setNotifications(snapshot.notifications || []);
+    const refreshDatabase = async (initial = false) => {
+      try {
+        const state = await loadDatabaseSnapshot<DatabaseSnapshot>();
+        if (cancelled) return;
+        if (initial || state.changed) applySnapshot(state.payload || {});
         setDatabaseError('');
         setIsDatabaseReady(true);
-      })
-      .catch(error => {
+      } catch (error) {
         console.error('Database MySQL tidak dapat dimuat.', error);
-        setDatabaseError(error instanceof Error ? error.message : 'Database MySQL tidak dapat dimuat.');
-        setIsDatabaseReady(false);
-      })
-      .finally(() => {
-        if (cancelled) return;
-        setIsDatabaseLoading(false);
-      });
+        if (initial) {
+          setDatabaseError(error instanceof Error ? error.message : 'Database MySQL tidak dapat dimuat.');
+          setIsDatabaseReady(false);
+        }
+      } finally {
+        if (initial && !cancelled) setIsDatabaseLoading(false);
+      }
+    };
+
+    void refreshDatabase(true);
+    const pollTimer = window.setInterval(() => void refreshDatabase(false), 4000);
 
     return () => {
       cancelled = true;
+      window.clearInterval(pollTimer);
     };
   }, []);
+
+  useEffect(() => {
+    if (!isDatabaseReady) return;
+    writeStorage('uppm_lecturer_profiles', lecturerProfiles);
+  }, [lecturerProfiles, isDatabaseReady]);
 
   useEffect(() => {
     if (!isDatabaseReady) return;
@@ -207,8 +231,13 @@ function useStoreState() {
 
   useEffect(() => {
     if (!isDatabaseReady) return;
+    if (applyingRemoteSnapshot.current) {
+      applyingRemoteSnapshot.current = false;
+      return;
+    }
 
     queueDatabaseSync({
+      lecturerProfiles,
       accounts,
       projects,
       publications,
@@ -219,22 +248,58 @@ function useStoreState() {
       monthlyUpdates,
       notifications,
     });
-  }, [accounts, projects, publications, surat, suratTugas, sintaVerifications, claimSubmissions, monthlyUpdates, notifications, isDatabaseReady]);
+  }, [lecturerProfiles, accounts, projects, publications, surat, suratTugas, sintaVerifications, claimSubmissions, monthlyUpdates, notifications, isDatabaseReady]);
 
-  const login = (username: string, password: string) => {
+  const login = (username: string, password: string, role: UserRole) => {
     const normalizedUsername = username.trim().toLowerCase();
-    const account = accounts.find(item => item.username.toLowerCase() === normalizedUsername && item.password === password);
+    const credentialsAccount = accounts.find(item => item.username.toLowerCase() === normalizedUsername && item.password === password);
 
-    if (!account) {
+    if (!credentialsAccount) {
       return { ok: false, error: 'Username atau password tidak sesuai.' };
     }
 
-    setCurrentUserId(account.id);
+    if (credentialsAccount.role !== role) {
+      const actualRole = credentialsAccount.role === 'admin' ? 'Admin' : 'Dosen';
+      return { ok: false, error: `Akun ini terdaftar sebagai ${actualRole}. Pilih login ${actualRole}.` };
+    }
+
+    setCurrentUserId(credentialsAccount.id);
     return { ok: true };
   };
 
   const logout = () => {
     setCurrentUserId(null);
+  };
+
+  const updateLecturerNuptk = (id: string, nuptkValue: string) => {
+    if (!isAdmin) return { ok: false, error: 'Hanya admin yang dapat mengubah data dosen.' };
+    const nuptk = nuptkValue.trim();
+    if (!/^\d{16}$/.test(nuptk)) return { ok: false, error: 'NUPTK harus terdiri dari 16 angka.' };
+    if (lecturerProfiles.some(item => item.id !== id && item.nuptk === nuptk)) return { ok: false, error: 'NUPTK sudah terdaftar.' };
+    if (!lecturerProfiles.some(item => item.id === id)) return { ok: false, error: 'Dosen tidak ditemukan.' };
+
+    setLecturerProfiles(prev => prev.map(item => item.id === id ? { ...item, nuptk } : item));
+    setAccounts(prev => prev.map(account => account.dosenId === id ? { ...account, nuptk } : account));
+    return { ok: true };
+  };
+
+  const createLecturerProfile = (payload: { nama: string; nuptk: string; prodi?: Prodi }) => {
+    if (!isAdmin) return { ok: false, error: 'Hanya admin yang dapat menambah dosen.' };
+    const nama = payload.nama.trim();
+    const nuptk = payload.nuptk.trim();
+    if (nama.length < 2) return { ok: false, error: 'Nama dosen wajib diisi.' };
+    if (!/^\d{16}$/.test(nuptk)) return { ok: false, error: 'NUPTK harus terdiri dari 16 angka.' };
+    if (lecturerProfiles.some(item => item.nuptk === nuptk)) return { ok: false, error: 'NUPTK sudah terdaftar.' };
+
+    const newProfile: DosenProfile = {
+      id: `manual-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      nama,
+      nuptk,
+      jabatanFungsional: '-',
+      ...(payload.prodi ? { prodi: payload.prodi } : {}),
+    };
+    setLecturerProfiles(prev => [...prev, newProfile]);
+    return { ok: true };
   };
 
   const createInitialAdmin = (payload: { username: string; password: string; nama: string }) => {
@@ -260,10 +325,11 @@ function useStoreState() {
   };
 
   const createDosenAccount = (payload: { dosenId: string; username: string; password: string }) => {
+    if (!isAdmin) return { ok: false, error: 'Hanya admin yang dapat membuat akun dosen.' };
     const username = payload.username.trim();
     const lecturer = lecturerProfiles.find(dosen => dosen.id === payload.dosenId);
 
-    if (!lecturer) return { ok: false, error: 'Dosen tidak ditemukan dalam daftar CSV.' };
+    if (!lecturer) return { ok: false, error: 'Dosen tidak ditemukan dalam daftar dosen.' };
     if (!username || !payload.password) return { ok: false, error: 'Username dan password wajib diisi.' };
     if (accounts.some(account => account.username.toLowerCase() === username.toLowerCase())) {
       return { ok: false, error: 'Username sudah dipakai.' };
@@ -285,6 +351,7 @@ function useStoreState() {
   };
 
   const deleteAccount = (id: string) => {
+    if (!isAdmin) return;
     if (id === 'admin') return;
     setAccounts(prev => prev.filter(account => account.id !== id));
     if (currentUserId === id) setCurrentUserId(null);
@@ -327,8 +394,12 @@ function useStoreState() {
   };
 
   const addSuratTugas = (payload: Omit<SuratTugas, 'id' | 'tanggalPengajuan' | 'status'>) => {
+    const signatory = getSuratTugasSignatory(payload.tanggalMulai);
     const newSuratTugas: SuratTugas = {
       ...withOwner(payload),
+      nomorSurat: generateSuratTugasNumber(payload.tanggalMulai),
+      penandatangan: signatory.name,
+      jabatanPenandatangan: signatory.role,
       id: Date.now().toString(),
       tanggalPengajuan: new Date().toISOString(),
       status: 'Menunggu'
@@ -355,13 +426,29 @@ function useStoreState() {
   };
 
   const addClaimSubmission = (payload: Omit<ClaimSubmission, 'id' | 'tanggalPengajuan' | 'status'>) => {
+    const tahap = payload.tahap || 'Reimburse';
+    if (tahap === 'Reimburse') {
+      const plan = claimSubmissions.find(item => item.id === payload.rencanaId);
+      const planOwnedByUser = plan && (!currentUser || plan.ownerId === currentUser.id);
+      const alreadyUsed = claimSubmissions.some(item =>
+        item.rencanaId === payload.rencanaId
+        && (item.tahap || 'Reimburse') === 'Reimburse'
+        && item.status !== 'Ditolak',
+      );
+      if (!plan || plan.tahap !== 'Rencana Submit' || plan.status !== 'Disetujui' || !planOwnedByUser || alreadyUsed) {
+        return { ok: false, error: 'Pilih rencana submit yang sudah disetujui admin dan belum digunakan.' };
+      }
+    }
     const newClaim: ClaimSubmission = {
       ...withOwner(payload),
+      tahap,
+      rencanaId: tahap === 'Reimburse' ? payload.rencanaId : undefined,
       id: Date.now().toString(),
       tanggalPengajuan: new Date().toISOString(),
       status: 'Menunggu'
     };
     setClaimSubmissions(prev => [newClaim, ...prev]);
+    return { ok: true };
   };
 
   const deleteClaimSubmission = (id: string) => {
@@ -403,20 +490,31 @@ function useStoreState() {
   };
 
   const updateSuratTugasStatus = (id: string, status: SuratTugas['status']) => {
+    if (!isAdmin) return;
     setSuratTugas(prev => prev.map(item => {
       if (item.id !== id) return item;
       if (status !== 'Disetujui') return { ...item, status, finalDocument: undefined, qrPayload: '' };
 
-      const finalDocument = item.finalDocument || createFinalDocument(
+      const signatory = getSuratTugasSignatory(item.tanggalMulai);
+      const { year, month } = getSuratTugasPeriod(item.tanggalMulai);
+      const approvedItem = item.finalDocument ? normalizeSuratTugas(item) : {
+        ...item,
+        nomorSurat: item.nomorSurat.endsWith(`/UPPM/ST/${month}/${year}`)
+          ? item.nomorSurat
+          : createSuratTugasNumber(prev, item.tanggalMulai),
+        penandatangan: signatory.name,
+        jabatanPenandatangan: signatory.role,
+      };
+      const finalDocument = approvedItem.finalDocument || createFinalDocument(
         'surat-tugas',
-        item.namaKegiatan,
-        item.nomorSurat,
-        item as unknown as Record<string, unknown>,
+        approvedItem.namaKegiatan,
+        approvedItem.nomorSurat,
+        approvedItem as unknown as Record<string, unknown>,
         currentUser?.nama || 'Administrator UPPM',
       );
 
       return {
-        ...item,
+        ...approvedItem,
         status,
         finalDocument,
         qrPayload: finalDocument.barcodePayload,
@@ -425,6 +523,7 @@ function useStoreState() {
   };
 
   const updateSintaVerificationStatus = (id: string, status: SintaVerification['status']) => {
+    if (!isAdmin) return;
     setSintaVerifications(prev => prev.map(item => {
       if (item.id !== id) return item;
       if (status !== 'Terverifikasi') return { ...item, status, finalDocument: undefined };
@@ -443,9 +542,15 @@ function useStoreState() {
   };
 
   const updateClaimStatus = (id: string, status: ClaimSubmission['status']) => {
+    if (!isAdmin) return;
     setClaimSubmissions(prev => prev.map(item => {
       if (item.id !== id) return item;
       if (status !== 'Disetujui') return { ...item, status, finalDocument: undefined };
+      if (item.tahap === 'Rencana Submit') return { ...item, status, finalDocument: undefined };
+      if (item.rencanaId) {
+        const plan = prev.find(candidate => candidate.id === item.rencanaId);
+        if (!plan || plan.tahap !== 'Rencana Submit' || plan.status !== 'Disetujui') return item;
+      }
 
       const finalDocument = item.finalDocument || createFinalDocument(
         'klaim',
@@ -459,19 +564,7 @@ function useStoreState() {
     }));
   };
 
-  const generateSuratTugasNumber = () => {
-    const month = new Date().toLocaleDateString('id-ID', { month: '2-digit' }).replace(/\D/g, '') || '01';
-    const year = new Date().getFullYear();
-    const yearSuffix = `/${year}`;
-    const highestSequence = suratTugas.reduce((highest, item) => {
-      if (!item.nomorSurat?.endsWith(yearSuffix)) return highest;
-      const sequence = Number.parseInt(item.nomorSurat.split('/')[0] || '0', 10);
-      return Number.isFinite(sequence) ? Math.max(highest, sequence) : highest;
-    }, 0);
-    const next = highestSequence + 1;
-
-    return `${String(next).padStart(3, '0')}/UPPM/ST/${month}/${year}`;
-  };
+  const generateSuratTugasNumber = (tanggalMulai = '') => createSuratTugasNumber(suratTugas, tanggalMulai);
 
   return {
     accounts,
@@ -484,6 +577,8 @@ function useStoreState() {
     logout,
     createInitialAdmin,
     createDosenAccount,
+    updateLecturerNuptk,
+    createLecturerProfile,
     deleteAccount,
     lecturerProfiles,
     allProjects: projects,

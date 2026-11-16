@@ -1,11 +1,16 @@
 type SnapshotPayload = Record<string, unknown>;
+export type DatabaseSnapshotState<T extends SnapshotPayload> = {
+  payload: T | null;
+  revision: number;
+  changed: boolean;
+};
 
 let syncTimer: number | undefined;
-let serverRevision = 0;
+let serverRevision = -1;
 let pendingPayload: SnapshotPayload | null = null;
 let syncInFlight = false;
 
-export async function loadDatabaseSnapshot<T extends SnapshotPayload>() {
+export async function loadDatabaseSnapshot<T extends SnapshotPayload>(): Promise<DatabaseSnapshotState<T>> {
   const response = await fetch('/api/snapshot', {
     method: 'GET',
     headers: { Accept: 'application/json' },
@@ -16,8 +21,10 @@ export async function loadDatabaseSnapshot<T extends SnapshotPayload>() {
   }
 
   const result = await response.json() as { ok?: boolean; payload?: T | null; revision?: number };
-  serverRevision = Number(result.revision || 0);
-  return result.payload || null;
+  const revision = Number(result.revision || 0);
+  const changed = revision !== serverRevision;
+  serverRevision = revision;
+  return { payload: result.payload || null, revision, changed };
 }
 
 export function queueDatabaseSync(payload: SnapshotPayload) {
@@ -42,6 +49,7 @@ async function flushDatabaseSync() {
     serverRevision = Number(result.revision || serverRevision);
   } catch (error) {
     console.error('Sinkronisasi MySQL gagal.', error);
+    window.dispatchEvent(new CustomEvent('uppm:database-sync-error', { detail: error }));
   } finally {
     syncInFlight = false;
     if (pendingPayload) window.setTimeout(flushDatabaseSync, 0);

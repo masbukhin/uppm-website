@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { motion } from 'motion/react';
 import { Download, FileSpreadsheet, Save, Trash2 } from 'lucide-react';
 import { createEmptySintaFields, downloadSintaExcel, sintaRequiredColumns, sintaResearchColumns, toSintaCsvRows } from '../data/sintaTemplate';
-import { findLecturerById, getLecturerDisplay } from '../data/lecturers';
+import { getLecturerDisplay } from '../data/lecturers';
 import { useStore } from '../store/useStore';
 import { Prodi, SintaVerification } from '../types';
 
@@ -14,7 +14,7 @@ export default function SintaVerificationForm() {
   const [ketuaId, setKetuaId] = useState(defaultLecturerId);
   const [fields, setFields] = useState<Record<string, string>>(() => {
     const initial = createEmptySintaFields();
-    const lecturer = findLecturerById(defaultLecturerId);
+    const lecturer = lecturerProfiles.find(item => item.id === defaultLecturerId);
     initial.No = '1';
     initial.afiliasi_ketua = 'Politeknik Sinar Mas Berau Coal';
     initial.kd_pt_ketua = '115018';
@@ -49,13 +49,13 @@ export default function SintaVerificationForm() {
   };
 
   const applyLecturer = (slot: 'ketua' | number, id: string) => {
-    const lecturer = findLecturerById(id);
+    const lecturer = lecturerProfiles.find(item => item.id === id);
     if (!lecturer) return;
 
     if (slot === 'ketua') {
       setKetuaId(id);
       setFields(prev => ({ ...prev, nama_ketua: lecturer.nama, nidn_ketua: lecturer.nuptk }));
-      setFormMeta(prev => ({ ...prev, namaPengaju: lecturer.nama, prodi: lecturer.prodi }));
+      setFormMeta(prev => ({ ...prev, namaPengaju: lecturer.nama, prodi: lecturer.prodi || currentUser?.prodi || 'TRL' }));
       return;
     }
 
@@ -89,12 +89,12 @@ export default function SintaVerificationForm() {
   return (
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-8">
       <div>
-        <h2 className="text-2xl font-bold text-slate-900">Input Data SINTA</h2>
-        <p className="text-slate-500 mt-1">Isi setiap kolom sesuai template Upload_research agar format tidak berubah saat disiapkan untuk SINTA.</p>
+        <h2 className="text-2xl font-bold text-slate-900">{isAdmin ? 'Validasi Data SINTA' : 'Pengajuan Data SINTA'}</h2>
+        <p className="text-slate-500 mt-1">{isAdmin ? 'Periksa pengajuan SINTA dosen dan tetapkan hasil verifikasi.' : 'Isi setiap kolom sesuai template Upload_research untuk dikirim kepada admin.'}</p>
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_420px] gap-8">
-        <form onSubmit={handleSubmit} className="bg-white p-6 rounded-lg shadow-sm border border-red-100 space-y-6">
+      <div className={`grid grid-cols-1 gap-8 ${isAdmin ? '' : 'xl:grid-cols-[minmax(0,1fr)_420px]'}`}>
+        {!isAdmin && <form onSubmit={handleSubmit} className="bg-white p-6 rounded-lg shadow-sm border border-red-100 space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="space-y-2 md:col-span-2">
               <label className="text-sm font-semibold text-slate-700">Ketua dari Daftar Dosen</label>
@@ -159,14 +159,14 @@ export default function SintaVerificationForm() {
             <button type="button" onClick={handleDownloadCsv} className="px-5 py-3 bg-slate-100 text-slate-700 rounded-lg font-medium hover:bg-slate-200 flex items-center justify-center gap-2"><Download className="w-5 h-5" /><span>Download CSV SINTA</span></button>
             <button type="submit" className="px-5 py-3 bg-red-700 text-white rounded-lg font-medium hover:bg-red-800 flex items-center justify-center gap-2"><Save className="w-5 h-5" /><span>Simpan Pengajuan</span></button>
           </div>
-        </form>
+        </form>}
 
         <div className="space-y-6">
-          <div className="bg-white p-5 rounded-lg border border-red-100 shadow-sm">
+          {!isAdmin && <div className="bg-white p-5 rounded-lg border border-red-100 shadow-sm">
             <div className="flex items-center gap-2 mb-4"><FileSpreadsheet className="w-5 h-5 text-red-700" /><h3 className="font-bold text-slate-900">Kelengkapan Template</h3></div>
             <p className="text-sm text-slate-600 mb-3">{filledRequired} dari {sintaRequiredColumns.length} kolom wajib terisi.</p>
             <div className="flex flex-wrap gap-2">{sintaRequiredColumns.map(column => <span key={column} className={`px-2.5 py-1 rounded-md text-xs font-medium ${fields[column] ? 'bg-red-100 text-red-800' : 'bg-slate-100 text-slate-500'}`}>{column}</span>)}</div>
-          </div>
+          </div>}
 
           <div className="bg-white rounded-lg shadow-sm border border-slate-100 overflow-hidden">
             <div className="p-5 border-b border-slate-100"><h3 className="text-lg font-bold text-slate-900">Riwayat SINTA</h3></div>

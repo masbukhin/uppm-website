@@ -1,6 +1,8 @@
+import { useMemo, useState } from 'react';
 import { motion } from 'motion/react';
 import { Award, CheckCircle2, Clock3, FileCheck2, FileSignature, Hourglass, LayoutList, Users } from 'lucide-react';
 import { PRODI_OPTIONS, getProdiLabel, normalizeProdi } from '../data/prodi';
+import { historicalProjects } from '../data/historicalProjects';
 import { useStore } from '../store/useStore';
 
 type ActivityRow = {
@@ -23,6 +25,8 @@ function formatDate(value: string) {
 
 export default function Dashboard() {
   const { claimSubmissions, currentUser, isAdmin, projects, sintaVerifications, surat, suratTugas } = useStore();
+  const historicYears = useMemo(() => [...new Set(historicalProjects.map(item => item.tahun.match(/20\d{2}/)?.[0]).filter((year): year is string => Boolean(year && ['2023', '2024', '2025'].includes(year))))].sort().reverse(), []);
+  const [historicYear, setHistoricYear] = useState('Semua');
 
   const activityRows: ActivityRow[] = [
     ...suratTugas.map(item => ({ id: item.id, jenis: 'Surat Tugas', prodi: item.prodi, judul: item.namaKegiatan, status: item.status, tanggal: item.tanggalPengajuan, pemilik: item.ownerName || item.ketua })),
@@ -36,6 +40,12 @@ export default function Dashboard() {
   const menunggu = activityRows.filter(row => !finalStatuses.has(row.status) && !processStatuses.has(row.status)).length;
   const diproses = activityRows.filter(row => processStatuses.has(row.status)).length;
   const selesai = activityRows.filter(row => finalStatuses.has(row.status)).length;
+  const historicalResearch = historicalProjects.filter(item => item.kategori === 'Penelitian');
+  const historicalCommunity = historicalProjects.filter(item => item.kategori === 'Pengabdian');
+  const adminHistoricalProjects = historicalProjects.filter(item => {
+    const year = item.tahun.match(/20\d{2}/)?.[0];
+    return Boolean(year && ['2023', '2024', '2025'].includes(year) && (historicYear === 'Semua' || year === historicYear));
+  });
 
   const stats = [
     { label: 'Total Pengajuan', value: totalPengajuan, icon: LayoutList, color: 'bg-red-50 text-red-700' },
@@ -45,6 +55,10 @@ export default function Dashboard() {
     { label: 'Surat Tugas', value: suratTugas.length, icon: FileSignature, color: 'bg-slate-100 text-slate-700' },
     { label: 'SINTA', value: sintaVerifications.length, icon: FileCheck2, color: 'bg-slate-100 text-slate-700' },
     { label: 'Klaim', value: claimSubmissions.length, icon: Award, color: 'bg-slate-100 text-slate-700' },
+    ...(isAdmin ? [
+      { label: 'Penelitian Historis', value: historicalResearch.length, icon: FileCheck2, color: 'bg-indigo-50 text-indigo-700' },
+      { label: 'Pengabdian Historis', value: historicalCommunity.length, icon: FileSignature, color: 'bg-emerald-50 text-emerald-700' },
+    ] : []),
     { label: 'Pemilik Data', value: isAdmin ? new Set(activityRows.map(row => row.pemilik).filter(Boolean)).size : 1, icon: Users, color: 'bg-slate-100 text-slate-700' },
   ];
 
@@ -127,6 +141,26 @@ export default function Dashboard() {
           </div>
         </section>
       </div>
+
+      {isAdmin && <section className="overflow-hidden rounded-lg border border-slate-100 bg-white shadow-sm">
+        <div className="border-b border-slate-100 p-5">
+          <h3 className="font-bold text-slate-900">Riwayat Penelitian dan Pengabdian</h3>
+          <p className="mt-1 text-sm text-slate-500">Daftar penelitian dan PKM dari rekap UPPM tahun 2023–2025, terpisah dari pengajuan aktif.</p>
+          <label className="mt-3 inline-flex items-center gap-2 text-sm font-semibold text-slate-700">Tahun
+            <select value={historicYear} onChange={event => setHistoricYear(event.target.value)} className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+              <option>Semua</option>{historicYears.map(year => <option key={year}>{year}</option>)}
+            </select>
+          </label>
+        </div>
+        <div className="max-h-[520px] overflow-auto">
+          <table className="w-full text-left text-sm">
+            <thead className="sticky top-0 bg-slate-50 text-slate-500"><tr><th className="p-4">Tahun</th><th className="p-4">Kategori</th><th className="p-4">Prodi</th><th className="p-4">Ketua</th><th className="p-4">Judul</th><th className="p-4">Status</th></tr></thead>
+            <tbody className="divide-y divide-slate-100">{adminHistoricalProjects.map((item, index) => <tr key={`${item.kategori}-${item.referensi}-${index}`}><td className="whitespace-nowrap p-4">{item.tahun}</td><td className="p-4">{item.kategori}</td><td className="p-4">{getProdiLabel(item.prodi)}</td><td className="p-4">{item.ketua}</td><td className="min-w-72 p-4">{item.judul}</td><td className="p-4">{item.status === '-' ? 'Riwayat' : item.status}</td></tr>)}
+              {adminHistoricalProjects.length === 0 && <tr><td colSpan={6} className="p-8 text-center text-slate-500">Tidak ada penelitian atau PKM pada tahun ini.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      </section>}
     </motion.div>
   );
 }

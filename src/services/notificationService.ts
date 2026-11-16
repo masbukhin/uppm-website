@@ -137,6 +137,7 @@ export function calculateSubmissionSummary(
   };
 
   for (const dosen of dosenList) {
+    if (!dosen.prodi) continue;
     const submitted = submittedDosenIds.has(dosen.id);
     if (submitted) {
       perProdi[dosen.prodi].sudah++;

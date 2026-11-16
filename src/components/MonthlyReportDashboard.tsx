@@ -67,7 +67,7 @@ export default function MonthlyReportDashboard() {
     );
 
     for (const dosen of belumSubmitDosen) {
-      rows.push([dosen.nama, dosen.nuptk, getProdiLabel(dosen.prodi), '0', '0', '0', 'Belum']);
+      rows.push([dosen.nama, dosen.nuptk, dosen.prodi ? getProdiLabel(dosen.prodi) : '-', '0', '0', '0', 'Belum']);
     }
 
     const csv = [headers.join(','), ...rows.map(row => row.map(cell => `"${cell}"`).join(','))].join('\n');

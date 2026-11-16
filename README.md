@@ -15,7 +15,7 @@ View your app in AI Studio: https://ai.studio/apps/989fb36d-13cd-449e-9da5-b4513
 
 1. Install dependencies:
    `npm install`
-2. Copy `.env.example` to `.env.local`, then fill `MYSQL_HOST`, `MYSQL_USER`, `MYSQL_PASSWORD`, and `MYSQL_DATABASE`.
+2. Copy `.env.example` to `.env.local`, then fill `MYSQL_HOST`, `MYSQL_USER`, `MYSQL_PASSWORD`, and `MYSQL_DATABASE`. On Vercel, the TiDB Cloud integration can instead supply `TIDB_HOST`, `TIDB_PORT`, `TIDB_USER`, `TIDB_PASSWORD`, and `TIDB_DATABASE` automatically.
 3. Optional: set `VITE_GEMINI_API_KEY` for Gemini helper buttons.
 4. Run frontend and backend together:
    `npm run dev`
@@ -23,3 +23,5 @@ View your app in AI Studio: https://ai.studio/apps/989fb36d-13cd-449e-9da5-b4513
 Open `http://localhost:3000`. Backend health is available at `http://localhost:4100/api/health`.
 
 On first start, backend creates strict MySQL tables from `server/schema.sql`. If `data/uppm.sqlite` contains an old snapshot and MySQL is empty, backend imports it once. SQLite remains unchanged as rollback data.
+
+For Vercel, add the same `MYSQL_*` variables to Project Settings. Vercel connects outbound to the external MySQL server on port `3306`; Vercel does not run a MySQL daemon inside the deployment.

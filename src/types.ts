@@ -9,8 +9,8 @@ export interface DosenProfile {
   nama: string;
   nuptk: string;
   jabatanFungsional: string;
-  prodi: Prodi;
-  prodiLengkap: string;
+  prodi?: Prodi;
+  prodiLengkap?: string;
 }
 
 export interface UserAccount {
@@ -132,9 +132,11 @@ export interface SintaVerification extends OwnedRecord {
 
 export interface ClaimSubmission extends OwnedRecord {
   id: string;
+  tahap?: 'Rencana Submit' | 'Reimburse';
+  rencanaId?: string;
   namaPengaju: string;
   prodi: Prodi;
-  jenisKlaim: 'Klaim Buku' | 'Klaim Publikasi';
+  jenisKlaim: 'Klaim Buku' | 'Klaim Publikasi' | 'Dana Penelitian' | 'Dana Pengabdian';
   judul: string;
   tanggalPelaksanaan: string;
   buktiKaryaFileName: string;

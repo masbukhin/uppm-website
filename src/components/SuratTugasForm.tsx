@@ -1,36 +1,18 @@
 import React, { useMemo, useState } from 'react';
 import { motion } from 'motion/react';
 import { Download, FileDown, FileSignature, Paperclip, Printer, Save, Trash2, UserPlus } from 'lucide-react';
-import { findLecturerById, getLecturerDisplay } from '../data/lecturers';
+import { getLecturerDisplay } from '../data/lecturers';
 import { useStore } from '../store/useStore';
 import { AnggotaSuratTugas, Prodi, SuratTugas } from '../types';
+import DocumentQr from './DocumentQr';
+import { getSuratTugasSignatory } from '../services/suratTugasPolicy';
+
+const DEFAULT_SIGNATORY = getSuratTugasSignatory('');
 
 const formatDate = (value: string) => {
   if (!value) return '-';
   return new Date(value).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
 };
-
-function makeQrCells(value: string) {
-  let seed = 0;
-  for (let index = 0; index < value.length; index += 1) seed = (seed * 31 + value.charCodeAt(index)) % 9973;
-  return Array.from({ length: 121 }, (_, index) => {
-    const row = Math.floor(index / 11);
-    const col = index % 11;
-    const finder = (row < 3 && col < 3) || (row < 3 && col > 7) || (row > 7 && col < 3);
-    return finder || ((seed + row * 17 + col * 29 + row * col) % 5 < 2);
-  });
-}
-
-function QrSeal({ payload }: { payload: string }) {
-  const cells = makeQrCells(payload);
-  return (
-    <div className="barcode-box w-24 h-24 grid grid-cols-11 border-4 border-white bg-white shadow-sm" aria-label="QR validasi surat">
-      {cells.map((filled, index) => (
-        <span key={index} className={filled ? 'barcode-cell bg-slate-900' : 'bg-white'} />
-      ))}
-    </div>
-  );
-}
 
 export default function SuratTugasForm() {
   const { currentUser, generateSuratTugasNumber, lecturerProfiles, suratTugas, addSuratTugas, deleteSuratTugas, updateSuratTugasStatus, isAdmin } = useStore();
@@ -48,28 +30,31 @@ export default function SuratTugasForm() {
     lokasi: '',
     tanggalMulai: '',
     tanggalSelesai: '',
-    ketua: findLecturerById(defaultLecturerId)?.nama || currentUser?.nama || '',
-    ketuaNuptk: findLecturerById(defaultLecturerId)?.nuptk || currentUser?.nuptk || '',
-    prodi: findLecturerById(defaultLecturerId)?.prodi || currentUser?.prodi || 'TRL',
+    ketua: lecturerProfiles.find(item => item.id === defaultLecturerId)?.nama || currentUser?.nama || '',
+    ketuaNuptk: lecturerProfiles.find(item => item.id === defaultLecturerId)?.nuptk || currentUser?.nuptk || '',
+    prodi: lecturerProfiles.find(item => item.id === defaultLecturerId)?.prodi || currentUser?.prodi || 'TRL',
     anggota: [],
     lampiranFileNames: [],
     qrPayload: '',
     dasarSurat: 'Dalam rangka pelaksanaan kegiatan Tri Dharma Perguruan Tinggi di lingkungan Politeknik Sinar Mas Berau Coal.',
-    penandatangan: 'Kepala UPPM',
-    jabatanPenandatangan: 'Kepala Unit Penelitian dan Pengabdian kepada Masyarakat'
+    penandatangan: DEFAULT_SIGNATORY.name,
+    jabatanPenandatangan: DEFAULT_SIGNATORY.role,
   });
 
-  const nomorSurat = generateSuratTugasNumber();
+  const nomorSurat = generateSuratTugasNumber(formData.tanggalMulai);
 
   const selectedFinal = suratTugas.find(item => item.id === selectedFinalId && item.finalDocument)?.finalDocument;
 
   const previewData = useMemo(() => {
-    const ketua = findLecturerById(ketuaId);
+    const ketua = lecturerProfiles.find(item => item.id === ketuaId);
+    const signatory = getSuratTugasSignatory(formData.tanggalMulai);
     const payload = `${nomorSurat}|${formData.namaKegiatan}|${formData.tanggalMulai}|${formData.tanggalSelesai}|${ketua?.nama || formData.ketua}`;
 
     return {
       ...formData,
       nomorSurat,
+      penandatangan: signatory.name,
+      jabatanPenandatangan: signatory.role,
       ketua: ketua?.nama || formData.ketua,
       ketuaNuptk: ketua?.nuptk || formData.ketuaNuptk,
       prodi: ketua?.prodi || formData.prodi,
@@ -80,16 +65,16 @@ export default function SuratTugasForm() {
 
   const documentData = (selectedFinal?.snapshot as unknown as SuratTugas | undefined) || previewData;
   const isFinalDocument = Boolean(selectedFinal);
-  const barcodePayload = selectedFinal?.barcodePayload || previewData.qrPayload;
+  const signatory = getSuratTugasSignatory(documentData.tanggalMulai);
 
   const handleKetuaChange = (id: string) => {
-    const ketua = findLecturerById(id);
+    const ketua = lecturerProfiles.find(item => item.id === id);
     setKetuaId(id);
-    if (ketua) setFormData(prev => ({ ...prev, ketua: ketua.nama, ketuaNuptk: ketua.nuptk, prodi: ketua.prodi }));
+    if (ketua) setFormData(prev => ({ ...prev, ketua: ketua.nama, ketuaNuptk: ketua.nuptk, prodi: ketua.prodi || prev.prodi }));
   };
 
   const addAnggota = () => {
-    const selected = findLecturerById(selectedAnggotaId);
+    const selected = lecturerProfiles.find(item => item.id === selectedAnggotaId);
     if (!selected || anggota.some(item => item.dosenId === selected.id)) return;
     setAnggota(prev => [...prev, {
       dosenId: selected.id,
@@ -122,13 +107,13 @@ export default function SuratTugasForm() {
   return (
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-8">
       <div className="no-print">
-        <h2 className="text-2xl font-bold text-slate-900">Pengajuan Surat Tugas</h2>
-        <p className="text-slate-500 mt-1">Nomor surat otomatis. Pilih dosen dari daftar CSV, unggah lampiran, lalu cetak surat dengan stempel UPPM dan QR validasi.</p>
+        <h2 className="text-2xl font-bold text-slate-900">{isAdmin ? 'Validasi Surat Tugas' : 'Pengajuan Surat Tugas'}</h2>
+        <p className="text-slate-500 mt-1">{isAdmin ? 'Periksa seluruh pengajuan dosen, ubah status, lalu terbitkan dokumen final.' : 'Isi data kegiatan dan kirim pengajuan untuk divalidasi admin UPPM.'}</p>
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_520px] gap-8">
         <div className="no-print space-y-6">
-          <div className="bg-white p-6 rounded-lg shadow-sm border border-red-100">
+          {!isAdmin && <div className="bg-white p-6 rounded-lg shadow-sm border border-red-100">
             <form onSubmit={handleSubmit} className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                 <div className="space-y-2">
@@ -215,7 +200,7 @@ export default function SuratTugasForm() {
                 <button type="submit" className="px-5 py-3 bg-red-700 text-white rounded-lg font-medium hover:bg-red-800 flex items-center justify-center gap-2"><Save className="w-5 h-5" /><span>Simpan Pengajuan</span></button>
               </div>
             </form>
-          </div>
+          </div>}
 
           <div className="bg-white rounded-lg shadow-sm border border-slate-100 overflow-hidden">
             <div className="p-5 border-b border-slate-100 flex items-center justify-between"><h3 className="text-lg font-bold text-slate-900">Riwayat Surat Tugas</h3><FileSignature className="w-5 h-5 text-red-600" /></div>
@@ -271,14 +256,22 @@ export default function SuratTugasForm() {
 
           <div className="mt-10 flex justify-between items-end text-sm">
             <div className="space-y-2">
-              <QrSeal payload={barcodePayload} />
+              <DocumentQr documentId={selectedFinal?.id} />
               <p className="text-[10px] leading-tight max-w-32 break-all">ID: {selectedFinal?.id || 'draft'}</p>
             </div>
             <div className="w-72 text-center relative pt-1">
-              <p>Tanjung Redeb, {formatDate(selectedFinal?.approvedAt || new Date().toISOString())}</p><p>{documentData.jabatanPenandatangan}</p>
-              {isFinalDocument && <img src="/assets/stempel-uppm.png" alt="Stempel UPPM" className="absolute left-6 top-16 w-28 h-28 object-contain opacity-80 mix-blend-multiply" />}
-              {isFinalDocument && <img src="/assets/ttd-pimpinan.png" alt="Tanda tangan" className="absolute left-1/2 -translate-x-1/2 top-14 w-44 h-24 object-contain mix-blend-multiply" />}
-              <div className="h-36" /><p className="font-bold underline relative">{documentData.penandatangan}</p>
+              <p>Tanjung Redeb, {formatDate(documentData.tanggalMulai)}</p><p>{signatory.role}</p>
+              {isFinalDocument && signatory.combinedImage ? (
+                <img src={signatory.image} alt={`Tanda tangan, stempel UPPM, dan nama ${signatory.name}`} className="mx-auto mt-3 w-48 h-auto object-contain mix-blend-multiply" />
+              ) : (
+                <>
+                  {isFinalDocument && <img src="/assets/stempel-uppm.png" alt="Stempel UPPM" className="absolute left-6 top-16 w-28 h-28 object-contain opacity-80 mix-blend-multiply" />}
+                  {isFinalDocument && <img src={signatory.image} alt={`Tanda tangan ${signatory.name}`} className="absolute left-1/2 -translate-x-1/2 top-14 w-44 h-24 object-contain mix-blend-multiply" />}
+                  <div className="h-36" />
+                  <p className="font-bold underline relative">{signatory.name}</p>
+                  <p className="relative">NUPTK. {signatory.nuptk}</p>
+                </>
+              )}
             </div>
           </div>
           <div className="no-print mt-6 flex items-center gap-2 text-xs text-slate-500"><FileDown className="w-4 h-4" /><span>Dokumen final tersimpan saat admin menyetujui. Gunakan Cetak/PDF untuk mengunduh.</span></div>

@@ -5,6 +5,19 @@ CREATE TABLE IF NOT EXISTS app_state (
   CONSTRAINT chk_app_state_singleton CHECK (id = 1)
 ) ENGINE=InnoDB;
 
+CREATE TABLE IF NOT EXISTS lecturer_profiles (
+  id VARCHAR(100) PRIMARY KEY,
+  nama VARCHAR(255) NOT NULL,
+  nuptk VARCHAR(50) NOT NULL,
+  prodi ENUM('TRL','SVM','PM') NULL,
+  jabatan_fungsional VARCHAR(255) NOT NULL DEFAULT '-',
+  prodi_lengkap VARCHAR(255) NULL,
+  sort_order INT UNSIGNED NOT NULL,
+  payload JSON NOT NULL,
+  updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  INDEX idx_lecturer_profiles_nuptk (nuptk)
+) ENGINE=InnoDB;
+
 INSERT INTO app_state (id, revision) VALUES (1, 0) ON DUPLICATE KEY UPDATE id = VALUES(id);
 
 CREATE TABLE IF NOT EXISTS accounts (
@@ -51,11 +64,13 @@ CREATE TABLE IF NOT EXISTS sinta_verifications (
 ) ENGINE=InnoDB;
 
 CREATE TABLE IF NOT EXISTS claim_submissions (
-  id VARCHAR(100) PRIMARY KEY, owner_id VARCHAR(100) NULL, nama_pengaju VARCHAR(255) NOT NULL, prodi ENUM('TRL','SVM','PM') NOT NULL,
+  id VARCHAR(100) PRIMARY KEY, tahap ENUM('Rencana Submit','Reimburse') NOT NULL DEFAULT 'Reimburse', rencana_id VARCHAR(100) NULL,
+  owner_id VARCHAR(100) NULL, nama_pengaju VARCHAR(255) NOT NULL, prodi ENUM('TRL','SVM','PM') NOT NULL,
   jenis_klaim ENUM('Klaim Buku','Klaim Publikasi') NOT NULL, judul VARCHAR(500) NOT NULL, nominal DECIMAL(18,2) NULL,
   status ENUM('Menunggu','Diproses','Disetujui','Ditolak') NOT NULL, tanggal_pengajuan DATETIME(3) NOT NULL,
   sort_order INT UNSIGNED NOT NULL, payload JSON NOT NULL, updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
-  INDEX idx_claims_owner (owner_id), INDEX idx_claims_status (status), CONSTRAINT chk_claims_nominal CHECK (nominal IS NULL OR nominal >= 0)
+  INDEX idx_claims_owner (owner_id), INDEX idx_claims_status (status), INDEX idx_claims_tahap (tahap), INDEX idx_claims_rencana (rencana_id),
+  CONSTRAINT chk_claims_nominal CHECK (nominal IS NULL OR nominal >= 0)
 ) ENGINE=InnoDB;
 
 CREATE TABLE IF NOT EXISTS monthly_research_updates (

@@ -11,6 +11,9 @@ import LoginPage from './components/LoginPage';
 import AdminPanel from './components/AdminPanel';
 import MonthlyUpdateForm from './components/MonthlyUpdateForm';
 import MonthlyReportDashboard from './components/MonthlyReportDashboard';
+import DocumentVerification from './components/DocumentVerification';
+import FinanceReport from './components/FinanceReport';
+import PublicResearch from './components/PublicResearch';
 import { motion, AnimatePresence } from 'motion/react';
 import { useStore } from './store/useStore';
 
@@ -23,6 +26,14 @@ export default function App() {
       setActiveTab('dashboard');
     }
   }, [activeTab, isAdmin]);
+
+  if (window.location.pathname === '/verify') {
+    return <DocumentVerification />;
+  }
+
+  if (window.location.pathname === '/riset') {
+    return <PublicResearch />;
+  }
 
   if (!currentUser) {
     return <LoginPage />;
@@ -139,6 +150,11 @@ export default function App() {
             transition={{ duration: 0.2 }}
           >
             <MonthlyReportDashboard />
+          </motion.div>
+        )}
+        {activeTab === 'finance-report' && isAdmin && (
+          <motion.div key="finance-report" initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }} transition={{ duration: 0.2 }}>
+            <FinanceReport />
           </motion.div>
         )}
       </AnimatePresence>

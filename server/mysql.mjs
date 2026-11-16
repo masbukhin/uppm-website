@@ -1,18 +1,22 @@
 import mysql from 'mysql2/promise';
-import Database from 'better-sqlite3';
 import fs from 'node:fs';
 import path from 'node:path';
 
 const TABLES = {
+  lecturerProfiles: {
+    table: 'lecturer_profiles',
+    columns: ['id', 'nama', 'nuptk', 'prodi', 'jabatan_fungsional', 'prodi_lengkap', 'sort_order', 'payload'],
+    values: item => [item.id, item.nama, item.nuptk, mysqlProdi(item.prodi), item.jabatanFungsional || '-', item.prodiLengkap || null],
+  },
   accounts: {
     table: 'accounts',
     columns: ['id', 'username', 'password', 'role', 'dosen_id', 'nama', 'prodi', 'nuptk', 'sort_order', 'payload'],
-    values: item => [item.id, item.username, item.password, item.role, item.dosenId || null, item.nama, item.prodi || null, item.nuptk || null],
+    values: item => [item.id, item.username, item.password, item.role, item.dosenId || null, item.nama, mysqlProdi(item.prodi), item.nuptk || null],
   },
   projects: {
     table: 'projects',
     columns: ['id', 'owner_id', 'judul', 'kategori', 'status', 'prodi', 'tahun_anggaran', 'dana', 'sort_order', 'payload'],
-    values: item => [item.id, item.ownerId || null, item.judul, item.kategori, item.status, item.prodi, item.tahunAnggaran, Number(item.dana || 0)],
+    values: item => [item.id, item.ownerId || null, item.judul, item.kategori, item.status, mysqlProdi(item.prodi), item.tahunAnggaran, Number(item.dana || 0)],
   },
   publications: {
     table: 'publications',
@@ -22,27 +26,27 @@ const TABLES = {
   surat: {
     table: 'surat_keterangan',
     columns: ['id', 'owner_id', 'nama', 'prodi', 'jenis_surat', 'status', 'tanggal_request', 'sort_order', 'payload'],
-    values: item => [item.id, item.ownerId || null, item.nama, item.prodi, item.jenisSurat, item.status, mysqlDate(item.tanggalRequest)],
+    values: item => [item.id, item.ownerId || null, item.nama, mysqlProdi(item.prodi), item.jenisSurat, item.status, mysqlDate(item.tanggalRequest)],
   },
   suratTugas: {
     table: 'surat_tugas',
     columns: ['id', 'owner_id', 'nomor_surat', 'nama_kegiatan', 'jenis_kegiatan', 'prodi', 'status', 'tanggal_pengajuan', 'sort_order', 'payload'],
-    values: item => [item.id, item.ownerId || null, item.nomorSurat, item.namaKegiatan, item.jenisKegiatan, item.prodi, item.status, mysqlDate(item.tanggalPengajuan)],
+    values: item => [item.id, item.ownerId || null, item.nomorSurat, item.namaKegiatan, item.jenisKegiatan, mysqlProdi(item.prodi), item.status, mysqlDate(item.tanggalPengajuan)],
   },
   sintaVerifications: {
     table: 'sinta_verifications',
     columns: ['id', 'owner_id', 'nama_pengaju', 'prodi', 'jenis_data', 'tahun_pelaksanaan', 'status', 'tanggal_pengajuan', 'sort_order', 'payload'],
-    values: item => [item.id, item.ownerId || null, item.namaPengaju, item.prodi, item.jenisData, item.tahunPelaksanaan, item.status, mysqlDate(item.tanggalPengajuan)],
+    values: item => [item.id, item.ownerId || null, item.namaPengaju, mysqlProdi(item.prodi), item.jenisData, item.tahunPelaksanaan, item.status, mysqlDate(item.tanggalPengajuan)],
   },
   claimSubmissions: {
     table: 'claim_submissions',
-    columns: ['id', 'owner_id', 'nama_pengaju', 'prodi', 'jenis_klaim', 'judul', 'nominal', 'status', 'tanggal_pengajuan', 'sort_order', 'payload'],
-    values: item => [item.id, item.ownerId || null, item.namaPengaju, item.prodi, item.jenisKlaim, item.judul, item.nominal == null ? null : Number(item.nominal), item.status, mysqlDate(item.tanggalPengajuan)],
+    columns: ['id', 'tahap', 'rencana_id', 'owner_id', 'nama_pengaju', 'prodi', 'jenis_klaim', 'judul', 'nominal', 'status', 'tanggal_pengajuan', 'sort_order', 'payload'],
+    values: item => [item.id, item.tahap || 'Reimburse', item.rencanaId || null, item.ownerId || null, item.namaPengaju, mysqlProdi(item.prodi), item.jenisKlaim, item.judul, item.nominal == null ? null : Number(item.nominal), item.status, mysqlDate(item.tanggalPengajuan)],
   },
   monthlyUpdates: {
     table: 'monthly_research_updates',
     columns: ['id', 'owner_id', 'dosen_id', 'nama_dosen', 'nuptk', 'prodi', 'bulan', 'status_laporan', 'submitted_at', 'sort_order', 'payload'],
-    values: item => [item.id, item.ownerId || null, item.dosenId, item.namaDosen, item.nuptk, item.prodi, item.bulan, item.statusLaporan, mysqlDate(item.submittedAt)],
+    values: item => [item.id, item.ownerId || null, item.dosenId, item.namaDosen, item.nuptk, mysqlProdi(item.prodi), item.bulan, item.statusLaporan, mysqlDate(item.submittedAt)],
   },
   notifications: {
     table: 'notifications',
@@ -57,30 +61,46 @@ function mysqlDate(value) {
   return Number.isNaN(date.getTime()) ? new Date() : date;
 }
 
+function mysqlProdi(value) {
+  if (!value) return null;
+  if (value === 'SVM' || value === 'TSP') return 'SVM';
+  if (value === 'PM' || value === 'TPM') return 'PM';
+  return 'TRL';
+}
+
 function databaseConfig() {
-  const database = process.env.MYSQL_DATABASE || 'uppm';
+  const tidb = Boolean(process.env.TIDB_HOST);
+  const database = process.env.MYSQL_DATABASE || process.env.TIDB_DATABASE || 'uppm';
   if (!/^[A-Za-z0-9_]+$/.test(database)) throw new Error('MYSQL_DATABASE hanya boleh berisi huruf, angka, dan underscore.');
+  const sslEnabled = tidb || process.env.MYSQL_SSL === 'true';
   return {
-    host: process.env.MYSQL_HOST || '127.0.0.1',
-    port: Number(process.env.MYSQL_PORT || 3306),
-    user: process.env.MYSQL_USER || 'root',
-    password: process.env.MYSQL_PASSWORD || '',
+    host: process.env.MYSQL_HOST || process.env.TIDB_HOST || '127.0.0.1',
+    port: Number(process.env.MYSQL_PORT || process.env.TIDB_PORT || 3306),
+    user: process.env.MYSQL_USER || process.env.TIDB_USER || 'root',
+    password: process.env.MYSQL_PASSWORD || process.env.TIDB_PASSWORD || '',
     database,
+    ...(sslEnabled ? { ssl: { rejectUnauthorized: process.env.MYSQL_SSL_REJECT_UNAUTHORIZED !== 'false' } } : {}),
   };
 }
 
-export async function createMysqlStore() {
+export async function createMysqlStore({ importLegacy = true } = {}) {
   const config = databaseConfig();
-  const bootstrap = await mysql.createConnection({ ...config, database: undefined });
-  await bootstrap.query(`CREATE DATABASE IF NOT EXISTS \`${config.database}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`);
-  await bootstrap.end();
+  const createDatabase = process.env.MYSQL_CREATE_DATABASE
+    ? process.env.MYSQL_CREATE_DATABASE === 'true'
+    : !process.env.VERCEL;
+  if (createDatabase) {
+    const bootstrap = await mysql.createConnection({ ...config, database: undefined });
+    await bootstrap.query(`CREATE DATABASE IF NOT EXISTS \`${config.database}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`);
+    await bootstrap.end();
+  }
 
   const pool = mysql.createPool({ ...config, waitForConnections: true, connectionLimit: Number(process.env.MYSQL_CONNECTION_LIMIT || 10), timezone: 'Z' });
   const statements = fs.readFileSync(path.resolve('server', 'schema.sql'), 'utf8')
     .split(/;\s*(?:\r?\n|$)/).map(statement => statement.trim()).filter(Boolean);
   for (const statement of statements) await pool.query(statement);
+  await ensureClaimWorkflowSchema(pool, config.database);
 
-  await importLegacySnapshot(pool);
+  if (importLegacy) await importLegacySnapshot(pool);
   return {
     async health() {
       await pool.query('SELECT 1');
@@ -114,6 +134,7 @@ export async function createMysqlStore() {
         }
         let saved = 0;
         for (const [key, definition] of Object.entries(TABLES)) {
+          if (key === 'lecturerProfiles' && !Array.isArray(payload[key])) continue;
           const items = Array.isArray(payload[key]) ? payload[key] : [];
           await connection.query(`DELETE FROM \`${definition.table}\``);
           await insertItems(connection, definition, items);
@@ -134,6 +155,28 @@ export async function createMysqlStore() {
   };
 }
 
+async function ensureClaimWorkflowSchema(pool, database) {
+  const [columns] = await pool.execute(
+    'SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?',
+    [database, 'claim_submissions'],
+  );
+  const names = new Set(columns.map(row => row.COLUMN_NAME));
+  if (!names.has('tahap')) {
+    await pool.query("ALTER TABLE claim_submissions ADD COLUMN tahap ENUM('Rencana Submit','Reimburse') NOT NULL DEFAULT 'Reimburse' AFTER id");
+  }
+  if (!names.has('rencana_id')) {
+    await pool.query('ALTER TABLE claim_submissions ADD COLUMN rencana_id VARCHAR(100) NULL AFTER tahap');
+  }
+
+  const [indexes] = await pool.execute(
+    'SELECT INDEX_NAME FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?',
+    [database, 'claim_submissions'],
+  );
+  const indexNames = new Set(indexes.map(row => row.INDEX_NAME));
+  if (!indexNames.has('idx_claims_tahap')) await pool.query('CREATE INDEX idx_claims_tahap ON claim_submissions (tahap)');
+  if (!indexNames.has('idx_claims_rencana')) await pool.query('CREATE INDEX idx_claims_rencana ON claim_submissions (rencana_id)');
+}
+
 async function insertItems(connection, definition, items) {
   const columns = definition.columns.map(column => `\`${column}\``).join(', ');
   const placeholders = definition.columns.map(() => '?').join(', ');
@@ -151,6 +194,7 @@ async function importLegacySnapshot(pool) {
   const legacyPath = path.resolve('data', 'uppm.sqlite');
   if (!fs.existsSync(legacyPath)) return;
 
+  const { default: Database } = await import('better-sqlite3');
   const legacyDb = new Database(legacyPath, { readonly: true });
   try {
     const row = legacyDb.prepare('SELECT payload FROM snapshots ORDER BY id DESC LIMIT 1').get();

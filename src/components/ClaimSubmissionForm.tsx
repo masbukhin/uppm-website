@@ -3,27 +3,12 @@ import { motion } from 'motion/react';
 import { BookMarked, Download, FileCheck2, Printer, ReceiptText, Save, Trash2 } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { ClaimSubmission, Prodi, StoredAttachment } from '../types';
+import DocumentQr from './DocumentQr';
 
 const formatDate = (value: string) => {
   if (!value) return '-';
   return new Date(value).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
 };
-
-function makeQrCells(value: string) {
-  let seed = 0;
-  for (let index = 0; index < value.length; index += 1) seed = (seed * 31 + value.charCodeAt(index)) % 9973;
-  return Array.from({ length: 81 }, (_, index) => {
-    const row = Math.floor(index / 9);
-    const col = index % 9;
-    const finder = (row < 3 && col < 3) || (row < 3 && col > 5) || (row > 5 && col < 3);
-    return finder || ((seed + row * 13 + col * 19 + row * col) % 4 < 2);
-  });
-}
-
-function QrSeal({ payload }: { payload: string }) {
-  const cells = makeQrCells(payload);
-  return <div className="barcode-box w-20 h-20 grid grid-cols-9 border-4 border-white bg-white shadow-sm">{cells.map((filled, index) => <span key={index} className={filled ? 'barcode-cell bg-slate-900' : 'bg-white'} />)}</div>;
-}
 
 function readAttachment(file: File, label: string): Promise<StoredAttachment> {
   return new Promise((resolve, reject) => {
@@ -65,7 +50,10 @@ export default function ClaimSubmissionForm() {
   const selectedClaim = claimSubmissions.find(item => item.id === selectedFinalId && item.finalDocument);
   const selectedSnapshot = selectedClaim?.finalDocument?.snapshot as unknown as ClaimSubmission | undefined;
   const selectedAttachments = selectedSnapshot?.attachments || [];
+  const [formError, setFormError] = useState('');
   const [formData, setFormData] = useState<Omit<ClaimSubmission, 'id' | 'tanggalPengajuan' | 'status'>>({
+    tahap: 'Rencana Submit',
+    rencanaId: '',
     namaPengaju: currentUser?.nama || '',
     prodi: currentUser?.prodi || 'TRL',
     jenisKlaim: 'Klaim Publikasi',
@@ -79,10 +67,40 @@ export default function ClaimSubmissionForm() {
     catatan: ''
   });
 
+  const usedPlanIds = new Set(claimSubmissions
+    .filter(item => (item.tahap || 'Reimburse') === 'Reimburse' && item.status !== 'Ditolak' && item.rencanaId)
+    .map(item => item.rencanaId));
+  const approvedPlans = claimSubmissions.filter(item =>
+    item.tahap === 'Rencana Submit'
+    && item.status === 'Disetujui'
+    && !usedPlanIds.has(item.id),
+  );
+  const planById = new Map<string, ClaimSubmission>(claimSubmissions.map(item => [item.id, item]));
+
+  const selectPlan = (rencanaId: string) => {
+    const plan = approvedPlans.find(item => item.id === rencanaId);
+    setFormData(prev => ({
+      ...prev,
+      rencanaId,
+      namaPengaju: plan?.namaPengaju || currentUser?.nama || '',
+      prodi: plan?.prodi || currentUser?.prodi || 'TRL',
+      jenisKlaim: plan?.jenisKlaim || 'Klaim Publikasi',
+      judul: plan?.judul || '',
+      nominal: plan?.nominal || 0,
+    }));
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    addClaimSubmission(formData);
+    setFormError('');
+    const result = addClaimSubmission(formData);
+    if (!result.ok) {
+      setFormError(result.error || 'Pengajuan gagal disimpan.');
+      return;
+    }
     setFormData({
+      tahap: 'Rencana Submit',
+      rencanaId: '',
       namaPengaju: currentUser?.nama || '',
       prodi: currentUser?.prodi || 'TRL',
       jenisKlaim: 'Klaim Publikasi',
@@ -104,18 +122,45 @@ export default function ClaimSubmissionForm() {
       className="space-y-8"
     >
       <div>
-        <h2 className="text-2xl font-bold text-slate-800">Klaim Buku dan Publikasi</h2>
-        <p className="text-slate-500 mt-1">Ajukan klaim insentif dengan bukti karya, bukti transfer, dan tanggal pelaksanaan.</p>
+        <h2 className="text-2xl font-bold text-slate-800">{isAdmin ? 'Kontrol Rencana dan Reimburse' : 'Rencana Submit dan Reimburse'}</h2>
+        <p className="text-slate-500 mt-1">{isAdmin ? 'Setujui rencana lebih dahulu, lalu validasi reimburse yang mengacu pada rencana tersebut.' : 'Ajukan rencana submit. Setelah disetujui admin, gunakan rencana itu untuk pengajuan reimburse.'}</p>
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_420px] gap-8">
-        <div className="bg-white p-6 rounded-lg shadow-sm border border-slate-100">
+      <div className={`grid grid-cols-1 gap-8 ${isAdmin ? '' : 'xl:grid-cols-[minmax(0,1fr)_420px]'}`}>
+        {!isAdmin && <div className="bg-white p-6 rounded-lg shadow-sm border border-slate-100">
           <form onSubmit={handleSubmit} className="space-y-6">
+            <div className="space-y-2">
+              <label className="text-sm font-semibold text-slate-700">Tahap Pengajuan</label>
+              <select
+                value={formData.tahap}
+                onChange={(event) => {
+                  const tahap = event.target.value as ClaimSubmission['tahap'];
+                  setFormError('');
+                  setFormData(prev => ({ ...prev, tahap, rencanaId: '', judul: '', buktiKaryaFileName: '', buktiTransferFileName: '', rekeningSinarmasFileName: '', attachments: [] }));
+                }}
+                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500"
+              >
+                <option value="Rencana Submit">Rencana Submit</option>
+                <option value="Reimburse">Klaim Pendanaan / Reimburse</option>
+              </select>
+            </div>
+
+            {formData.tahap === 'Reimburse' && <div className="space-y-2">
+              <label className="text-sm font-semibold text-slate-700">Rencana yang Disetujui Admin</label>
+              <select required value={formData.rencanaId} onChange={(event) => selectPlan(event.target.value)} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500">
+                <option value="">Pilih rencana submit</option>
+                {approvedPlans.map(plan => <option key={plan.id} value={plan.id}>{plan.judul}</option>)}
+              </select>
+              {approvedPlans.length === 0 && <p className="text-xs text-amber-700">Belum ada rencana yang disetujui admin atau semua rencana sudah digunakan.</p>}
+            </div>}
+
+            {formError && <p className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{formError}</p>}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               <div className="space-y-2">
                 <label className="text-sm font-semibold text-slate-700">Nama Pengaju</label>
                 <input
                   required
+                  disabled={formData.tahap === 'Reimburse'}
                   value={formData.namaPengaju}
                   onChange={(e) => setFormData({ ...formData, namaPengaju: e.target.value })}
                   className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500"
@@ -126,6 +171,7 @@ export default function ClaimSubmissionForm() {
                 <label className="text-sm font-semibold text-slate-700">Program Studi</label>
                 <select
                   value={formData.prodi}
+                  disabled={formData.tahap === 'Reimburse'}
                   onChange={(e) => setFormData({ ...formData, prodi: e.target.value as Prodi })}
                   className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500"
                 >
@@ -138,15 +184,18 @@ export default function ClaimSubmissionForm() {
                 <label className="text-sm font-semibold text-slate-700">Jenis Klaim</label>
                 <select
                   value={formData.jenisKlaim}
+                  disabled={formData.tahap === 'Reimburse'}
                   onChange={(e) => setFormData({ ...formData, jenisKlaim: e.target.value as ClaimSubmission['jenisKlaim'] })}
                   className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500"
                 >
+                  <option value="Dana Penelitian">Dana Penelitian</option>
+                  <option value="Dana Pengabdian">Dana Pengabdian</option>
                   <option value="Klaim Publikasi">Klaim Publikasi</option>
                   <option value="Klaim Buku">Klaim Buku</option>
                 </select>
               </div>
               <div className="space-y-2">
-                <label className="text-sm font-semibold text-slate-700">Tanggal Pelaksanaan</label>
+                <label className="text-sm font-semibold text-slate-700">{formData.tahap === 'Rencana Submit' ? 'Target Tanggal Submit' : 'Tanggal Submit/Publikasi'}</label>
                 <input
                   type="date"
                   required
@@ -156,17 +205,19 @@ export default function ClaimSubmissionForm() {
                 />
               </div>
               <div className="md:col-span-2 space-y-2">
-                <label className="text-sm font-semibold text-slate-700">Judul Buku atau Publikasi</label>
+                <label className="text-sm font-semibold text-slate-700">Judul Kegiatan atau Luaran</label>
                 <textarea
                   required
+                  disabled={formData.tahap === 'Reimburse'}
                   value={formData.judul}
                   onChange={(e) => setFormData({ ...formData, judul: e.target.value })}
                   className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 min-h-[82px]"
-                  placeholder="Judul artikel, buku, chapter, atau prosiding"
+                  placeholder="Judul penelitian, pengabdian, atau luaran"
                 />
               </div>
+              {formData.tahap === 'Reimburse' && <>
               <div className="space-y-2">
-                <label className="text-sm font-semibold text-slate-700">Bukti Publikasi atau Buku</label>
+                <label className="text-sm font-semibold text-slate-700">Bukti Kegiatan atau Luaran</label>
                 <input
                   type="file"
                   required={!formData.buktiKaryaFileName}
@@ -174,7 +225,7 @@ export default function ClaimSubmissionForm() {
                   onChange={async (e) => {
                     const file = e.target.files?.[0];
                     if (file) {
-                      const attachment = await readAttachment(file, 'Bukti Publikasi/Buku');
+                      const attachment = await readAttachment(file, 'Bukti Kegiatan/Luaran');
                       setFormData(prev => ({ ...prev, buktiKaryaFileName: file.name, attachments: [...(prev.attachments || []).filter(item => item.label !== attachment.label), attachment] }));
                     }
                   }}
@@ -216,8 +267,9 @@ export default function ClaimSubmissionForm() {
                 />
                 {formData.rekeningSinarmasFileName && <p className="text-xs text-slate-500">{formData.rekeningSinarmasFileName}</p>}
               </div>
+              </>}
               <div className="space-y-2">
-                <label className="text-sm font-semibold text-slate-700">Nominal Klaim (Rp)</label>
+                <label className="text-sm font-semibold text-slate-700">{formData.tahap === 'Rencana Submit' ? 'Rencana Pendanaan (Rp)' : 'Nominal Reimburse (Rp)'}</label>
                 <input
                   type="number"
                   min="0"
@@ -243,29 +295,29 @@ export default function ClaimSubmissionForm() {
                 className="px-6 py-3 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700 transition-colors flex items-center gap-2"
               >
                 <Save className="w-5 h-5" />
-                <span>Ajukan Klaim</span>
+                <span>{formData.tahap === 'Rencana Submit' ? 'Ajukan Rencana' : 'Ajukan Reimburse'}</span>
               </button>
             </div>
           </form>
-        </div>
+        </div>}
 
         <div className="space-y-6">
           <div className="grid grid-cols-2 gap-4">
             <div className="bg-white p-5 rounded-lg border border-slate-100 shadow-sm">
               <BookMarked className="w-6 h-6 text-red-600 mb-3" />
-              <p className="text-sm text-slate-500">Klaim Buku</p>
-              <p className="text-2xl font-bold text-slate-800">{claimSubmissions.filter(item => item.jenisKlaim === 'Klaim Buku').length}</p>
+              <p className="text-sm text-slate-500">Rencana Submit</p>
+              <p className="text-2xl font-bold text-slate-800">{claimSubmissions.filter(item => item.tahap === 'Rencana Submit').length}</p>
             </div>
             <div className="bg-white p-5 rounded-lg border border-slate-100 shadow-sm">
               <ReceiptText className="w-6 h-6 text-red-600 mb-3" />
-              <p className="text-sm text-slate-500">Klaim Publikasi</p>
-              <p className="text-2xl font-bold text-slate-800">{claimSubmissions.filter(item => item.jenisKlaim === 'Klaim Publikasi').length}</p>
+              <p className="text-sm text-slate-500">Reimburse</p>
+              <p className="text-2xl font-bold text-slate-800">{claimSubmissions.filter(item => (item.tahap || 'Reimburse') === 'Reimburse').length}</p>
             </div>
           </div>
 
           <div className="bg-white rounded-lg shadow-sm border border-slate-100 overflow-hidden">
             <div className="p-5 border-b border-slate-100 flex items-center justify-between">
-              <h3 className="text-lg font-bold text-slate-800">Riwayat Klaim</h3>
+              <h3 className="text-lg font-bold text-slate-800">Riwayat Rencana dan Reimburse</h3>
               <FileCheck2 className="w-5 h-5 text-slate-400" />
             </div>
             <div className="divide-y divide-slate-100 max-h-[560px] overflow-y-auto">
@@ -274,11 +326,12 @@ export default function ClaimSubmissionForm() {
                   <div className="flex justify-between gap-3">
                     <div className="min-w-0">
                       <span className="inline-flex px-2.5 py-1 rounded-md text-xs font-medium bg-red-50 text-red-700">
-                        {item.jenisKlaim}
+                        {item.tahap || 'Reimburse'} · {item.jenisKlaim}
                       </span>
                       <h4 className="font-semibold text-slate-800 text-sm mt-3 line-clamp-2">{item.judul}</h4>
                       <p className="text-sm text-slate-500 mt-1">{item.namaPengaju} | {item.prodi}</p>
                       <p className="text-xs text-slate-500 mt-2">Status: {item.status}</p>
+                      {item.rencanaId && <p className="text-xs text-slate-500 mt-1">Rencana: {planById.get(item.rencanaId)?.judul || item.rencanaId}</p>}
                       {item.finalDocument && <p className="text-xs text-red-700 mt-1">Dokumen final: {item.finalDocument.number}</p>}
                     </div>
                     <div className="flex items-start gap-2">
@@ -290,7 +343,7 @@ export default function ClaimSubmissionForm() {
                 </div>
               ))}
               {claimSubmissions.length === 0 && (
-                <div className="p-8 text-center text-slate-500">Belum ada klaim buku atau publikasi.</div>
+                <div className="p-8 text-center text-slate-500">Belum ada rencana submit atau reimburse.</div>
               )}
             </div>
           </div>
@@ -326,7 +379,7 @@ export default function ClaimSubmissionForm() {
               <tr><td className="py-1">Nominal</td><td>:</td><td>Rp {Number(selectedSnapshot.nominal || 0).toLocaleString('id-ID')}</td></tr>
               <tr><td className="py-1">Status</td><td>:</td><td>{selectedClaim.status}</td></tr>
             </tbody></table>
-            <p className="mt-5">Rekap ini melampirkan bukti publikasi/buku, bukti transfer, dan list nomor rekening Sinarmas. Gunakan tombol Download 3 Lampiran untuk mengambil file asli yang akan diajukan ke keuangan.</p>
+            <p className="mt-5">Rekap ini melampirkan bukti kegiatan/luaran, bukti transfer, dan list nomor rekening Sinarmas. Gunakan tombol Download 3 Lampiran untuk mengambil file asli yang akan diajukan ke keuangan.</p>
             <div className="no-print mt-4 rounded-lg border border-slate-200 bg-slate-50 p-4">
               <h4 className="font-bold text-slate-900">File asli untuk keuangan</h4>
               <div className="mt-3 space-y-2">
@@ -354,7 +407,7 @@ export default function ClaimSubmissionForm() {
           </div>
           <div className="mt-10 flex justify-between items-end text-sm">
             <div className="space-y-2">
-              <QrSeal payload={selectedClaim.finalDocument.barcodePayload} />
+              <DocumentQr documentId={selectedClaim.finalDocument.id} size={80} />
               <p className="text-[10px] leading-tight max-w-32 break-all">ID: {selectedClaim.finalDocument.id}</p>
             </div>
             <div className="w-72 text-center relative pt-1">
