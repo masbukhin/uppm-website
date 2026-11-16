@@ -1,0 +1,57 @@
+# UPPM stack: Node backend (serves API + built frontend) and MySQL 8.4.
+# On the VPS, values come from the .env file next to this compose file.
+name: uppm
+
+services:
+  app:
+    image: ${APP_IMAGE:-ghcr.io/masbukhin/uppm-website:latest}
+    build:
+      context: .
+      args:
+        VITE_GEMINI_API_KEY: ${VITE_GEMINI_API_KEY:-}
+        VITE_TURNSTILE_SITE_KEY: ${VITE_TURNSTILE_SITE_KEY:-}
+        VITE_APP_URL: ${VITE_APP_URL:-}
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PORT: 4100
+      APP_ORIGIN: ${APP_ORIGIN:-http://localhost:8080}
+      MYSQL_HOST: db
+      MYSQL_PORT: 3306
+      MYSQL_USER: ${MYSQL_USER:-uppm}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?MYSQL_PASSWORD wajib diisi di .env}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-uppm}
+      MYSQL_CREATE_DATABASE: "false"
+      MYSQL_CONNECTION_LIMIT: ${MYSQL_CONNECTION_LIMIT:-10}
+      MYSQL_SSL: "false"
+      TURNSTILE_SECRET_KEY: ${TURNSTILE_SECRET_KEY:-}
+      JSON_BODY_LIMIT: ${JSON_BODY_LIMIT:-25mb}
+    ports:
+      - "${APP_BIND:-0.0.0.0}:${APP_PORT:-8080}:4100"
+
+  db:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD wajib diisi di .env}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-uppm}
+      MYSQL_USER: ${MYSQL_USER:-uppm}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      TZ: UTC
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p\"$$MYSQL_ROOT_PASSWORD\" --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    # Not published to the host. Use `docker compose exec db mysql ...` for access.
+
+volumes:
+  mysql-data:

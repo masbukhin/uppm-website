@@ -2,6 +2,10 @@ import 'dotenv/config';
 import dotenv from 'dotenv';
 import express from 'express';
 import { createMysqlStore } from './mysql.mjs';
+import { findVerifiedDocument } from './document-verification.mjs';
+import verifyTurnstile from '../api/verify-turnstile.mjs';
+import fs from 'node:fs';
+import path from 'node:path';
 
 dotenv.config({ path: '.env.local', override: false });
 
@@ -43,6 +47,17 @@ app.get('/api/snapshot', async (_request, response) => {
   } catch (error) {
     console.error('MySQL read failed:', error);
     response.status(500).json({ ok: false, error: 'Gagal membaca data MySQL.' });
+  }
+});
+
+app.get('/api/verify', async (request, response) => {
+  try {
+    const { payload } = await store.loadSnapshot();
+    const document = findVerifiedDocument(payload, String(request.query.id || ''));
+    if (!document) return response.status(404).json({ valid: false });
+    return response.json({ valid: true, document });
+  } catch (error) {
+    response.status(503).json({ valid: false, error: 'Database verifikasi tidak tersedia.' });
   }
 });
 
@@ -91,6 +106,18 @@ app.get(['/api/sinta', '/api/sinta/:authorId'], async (request, response) => {
     response.status(status).json({ ok: false, error: status === 504 ? 'SINTA API timeout.' : 'Gagal mengambil data dari SINTA.' });
   }
 });
+
+app.post('/api/verify-turnstile', verifyTurnstile);
+
+app.use('/api', (_request, response) => response.status(404).json({ ok: false, error: 'Endpoint tidak ditemukan.' }));
+
+// Produksi (Docker/VPS): backend juga menyajikan hasil build frontend dari dist/.
+const distDir = path.resolve(process.env.STATIC_DIR || 'dist');
+if (fs.existsSync(path.join(distDir, 'index.html'))) {
+  app.use('/assets', express.static(path.join(distDir, 'assets'), { immutable: true, maxAge: '1y' }));
+  app.use(express.static(distDir, { index: false, maxAge: '1h' }));
+  app.get('*', (_request, response) => response.sendFile(path.join(distDir, 'index.html')));
+}
 
 async function fetchSinta(authorId, sourceUrl) {
   const headers = { Accept: 'text/html,application/xhtml+xml', 'User-Agent': 'UPPM-Poltek-Berau/1.0' };

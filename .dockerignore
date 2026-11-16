@@ -1,0 +1,17 @@
+node_modules
+dist
+.git
+.github
+.vercel
+.vercel-cli-cache
+.agents
+.env
+.env.*
+!.env.example
+*.log
+data/*.sqlite-shm
+data/*.sqlite-wal
+coverage
+Dockerfile
+docker-compose*.yml
+deploy
