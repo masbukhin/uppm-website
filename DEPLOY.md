@@ -109,3 +109,29 @@ docker compose up -d --build
   ```
 
   Setelah itu minta semua user mengganti password lewat menu **Akun Saya**, atau reset dari Panel Admin.
+
+## Versi backup & kembali ke versi sebelumnya
+
+Setiap deploy otomatis membuat backup `pre-deploy` dulu. Setiap backup menyimpan:
+- `backups/uppm-<tanggal>-<label>.sql.gz`: seluruh database (data, dokumen final, lampiran)
+- `backups/uppm-<tanggal>-<label>.meta`: image aplikasi yang sedang jalan dan revision database
+
+Backup disimpan 30 hari (`KEEP_DAYS`). Untuk backup harian jam 02:30, pasang cron sekali:
+
+```bash
+echo "30 2 * * * root /opt/uppm/backup.sh daily >> /var/log/uppm-backup.log 2>&1" | sudo tee /etc/cron.d/uppm-backup
+```
+
+Di VPS (`cd /opt/uppm`):
+
+```bash
+./backup.sh manual                          # buat backup sekarang
+./restore.sh list                           # lihat semua versi
+./restore.sh <nama-backup>                  # kembalikan database saja
+./restore.sh <nama-backup> --with-app       # kembalikan database + versi aplikasi saat itu
+./restore.sh latest --with-app              # versi terakhir sebelum deploy/restore
+```
+
+Sebelum restore, kondisi sekarang otomatis disimpan sebagai backup `pre-restore`,
+jadi restore yang salah bisa dibatalkan dengan me-restore backup `pre-restore` tersebut.
+Push berikutnya ke `main` akan kembali men-deploy versi terbaru.

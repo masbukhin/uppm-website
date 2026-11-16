@@ -67,14 +67,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Copy compose file to VPS
+      - name: Copy compose file and backup scripts to VPS
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           port: ${{ secrets.VPS_PORT || 22 }}
-          source: docker-compose.yml
+          source: docker-compose.yml,deploy/backup.sh,deploy/restore.sh
           target: ${{ secrets.VPS_APP_DIR || '/opt/uppm' }}
 
       - name: Pull and restart on VPS
@@ -94,6 +94,10 @@ jobs:
             set -e
             cd "$APP_DIR"
             if [ ! -f .env ]; then echo "Missing $APP_DIR/.env (copy from .env.docker.example)"; exit 1; fi
+            install -m 700 deploy/backup.sh backup.sh
+            install -m 700 deploy/restore.sh restore.sh
+            # Versioned backup before every deploy: roll back with ./restore.sh list / ./restore.sh <name> --with-app
+            ./backup.sh pre-deploy
             echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
             export APP_IMAGE
             docker compose pull app
