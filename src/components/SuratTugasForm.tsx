@@ -233,12 +233,15 @@ export default function SuratTugasForm() {
             <span>{isFinalDocument ? 'Dokumen final terkunci dan siap diunduh.' : 'Preview draft. Download aktif setelah admin menyetujui pengajuan.'}</span>
             {isFinalDocument && <button onClick={() => window.print()} className="px-3 py-2 bg-red-700 text-white rounded-md font-semibold flex items-center gap-2"><Printer className="w-4 h-4" />Cetak/PDF</button>}
           </div>
-          <div className="flex items-center gap-4 border-b-4 border-slate-900 pb-4">
-            <img src="/assets/logo-poltek-simas-berau.png" alt="Logo Poltek" className="w-20 h-20 object-contain" />
-            <div className="text-center flex-1">
-              <p className="text-sm font-bold uppercase">Politeknik Sinar Mas Berau Coal</p>
-              <p className="text-xs uppercase">Unit Penelitian dan Pengabdian kepada Masyarakat</p>
-              <p className="text-[11px] mt-1">Jl. Raja Alam II, Tanjung Redeb, Kabupaten Berau, Kalimantan Timur</p>
+          {/* Kop surat: format "KOP SURAT NEW - OKTOBER 2026 (A4)" */}
+          <div className="relative border-b-[2.5pt] border-black pb-2 text-black" style={{ fontFamily: '"Times New Roman", Times, serif' }}>
+            <img src="/assets/logo-poltek-simas-berau.png" alt="Logo Poltek" className="absolute left-0 top-1/2 -translate-y-1/2 w-[2.36cm] h-[2.36cm] object-contain" />
+            <div className="text-center pl-[1.5cm] leading-tight">
+              <p className="font-bold uppercase text-[14pt]">Kementerian Pendidikan Tinggi, Sains, dan Teknologi</p>
+              <p className="font-bold uppercase text-[14pt]">Politeknik Sinar Mas Berau Coal</p>
+              <p className="text-[9pt] mt-0.5">Jalan Raja Alam II, Kel.Sei Bedungun, Kec.Tanjung Redeb,</p>
+              <p className="text-[9pt]">Kab. Berau, Kalimantan Timur, Kode Pos 77315</p>
+              <p className="text-[9pt]"><em>Telp. 0811-5443-118, Website</em>: <a href="http://www.polteksimasberau.ac.id" className="text-blue-700 underline">www.polteksimasberau.ac.id</a>, <em>Email</em> : sekretariat@polteksimasberau.ac.id</p>
             </div>
           </div>
 
