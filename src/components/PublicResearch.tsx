@@ -38,7 +38,7 @@ export default function PublicResearch() {
       <header className="bg-white border-b border-stone-200">
         <div className="max-w-7xl mx-auto px-5 py-4 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3"><img src="/assets/logo-poltek-simas-berau.png" alt="Politeknik Sinar Mas Berau Coal" className="h-12 w-12 object-contain" /><div><div className="font-bold">UPPM Politeknik Sinar Mas Berau Coal</div><div className="text-xs text-slate-500">Informasi publik penelitian dan pengabdian</div></div></div>
-          <a href="/" className="inline-flex items-center gap-2 text-sm font-medium text-red-800 hover:text-red-950"><ArrowLeft size={16} /> Masuk ke aplikasi</a>
+          <div className="flex items-center gap-4"><a href="/" className="inline-flex items-center gap-2 text-sm font-medium text-red-800 hover:text-red-950"><ArrowLeft size={16} /> Beranda</a><a href="/login" className="rounded-lg bg-red-700 px-4 py-2 text-sm font-semibold text-white hover:bg-red-800">Login</a></div>
         </div>
       </header>
       <section className="bg-gradient-to-br from-red-950 via-red-900 to-amber-800 text-white">

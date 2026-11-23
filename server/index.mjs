@@ -3,7 +3,9 @@ import dotenv from 'dotenv';
 import express from 'express';
 import fs from 'node:fs';
 import path from 'node:path';
+import { randomBytes } from 'node:crypto';
 import { createMysqlStore } from './mysql.mjs';
+import { normalizePost } from './public-posts.mjs';
 import { findVerifiedDocument } from './document-verification.mjs';
 import { filterSnapshotForUser, mergeSnapshotForUser } from './access.mjs';
 import { turnstileEnabled, verifyTurnstileToken } from './turnstile.mjs';
@@ -292,6 +294,51 @@ app.get(['/api/sinta', '/api/sinta/:authorId'], requireAuth(), async (request, r
     console.error('SINTA fetch failed:', error);
     const status = error.name === 'AbortError' ? 504 : 502;
     response.status(status).json({ ok: false, error: status === 504 ? 'SINTA API timeout.' : 'Gagal mengambil data dari SINTA.' });
+  }
+});
+
+// ---------- Public website content ----------
+
+app.get('/api/public/home', async (_request, response) => {
+  try {
+    const [posts, stats] = await Promise.all([store.listPublicPosts(), store.publicStats()]);
+    response.setHeader('Cache-Control', 'public, max-age=60');
+    response.json({ ok: true, posts, stats });
+  } catch (error) {
+    console.error('Public content read failed:', error);
+    response.status(503).json({ ok: false, error: 'Informasi publik belum dapat dimuat.' });
+  }
+});
+
+app.get('/api/public-posts', requireAuth('admin'), async (_request, response) => {
+  try {
+    response.json({ ok: true, posts: await store.listPublicPosts({ includeDrafts: true }) });
+  } catch (error) {
+    console.error('Public posts read failed:', error);
+    response.status(500).json({ ok: false, error: 'Gagal membaca konten publik.' });
+  }
+});
+
+app.post('/api/public-posts', requireAuth('admin'), async (request, response) => {
+  const id = String(request.body?.id || '').trim() || `post-${Date.now().toString(36)}-${randomBytes(3).toString('hex')}`;
+  const result = normalizePost(request.body || {}, { id });
+  if (!result.ok) return response.status(400).json(result);
+  try {
+    response.json({ ok: true, post: await store.savePublicPost(result.post) });
+  } catch (error) {
+    console.error('Public post save failed:', error);
+    response.status(500).json({ ok: false, error: 'Gagal menyimpan konten publik.' });
+  }
+});
+
+app.delete('/api/public-posts/:id', requireAuth('admin'), async (request, response) => {
+  try {
+    const deleted = await store.deletePublicPost(request.params.id);
+    if (!deleted) return response.status(404).json({ ok: false, error: 'Konten tidak ditemukan.' });
+    response.json({ ok: true });
+  } catch (error) {
+    console.error('Public post delete failed:', error);
+    response.status(500).json({ ok: false, error: 'Gagal menghapus konten publik.' });
   }
 });
 

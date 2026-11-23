@@ -1,5 +1,5 @@
 import React from 'react';
-import { Award, BarChart3, Bell, CalendarDays, CircleDollarSign, FileCheck2, FileSignature, KeyRound, LayoutDashboard, LogOut, Menu, ShieldCheck, X } from 'lucide-react';
+import { Award, BarChart3, Bell, CalendarDays, CircleDollarSign, FileCheck2, FileSignature, Globe, KeyRound, LayoutDashboard, LogOut, Menu, ShieldCheck, X } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import NotificationBell from './NotificationBell';
 
@@ -19,6 +19,7 @@ export default function Layout({ children, activeTab, setActiveTab }: LayoutProp
     { id: 'monthly-report', label: 'Laporan Bulanan', icon: BarChart3, roles: ['admin'] },
     { id: 'finance-report', label: 'Laporan Keuangan', icon: CircleDollarSign, roles: ['admin'] },
     { id: 'admin', label: 'Admin', icon: ShieldCheck, roles: ['admin'] },
+    { id: 'konten-publik', label: 'Konten Website', icon: Globe, roles: ['admin'] },
     { id: 'surat-tugas', label: isAdmin ? 'Validasi Surat Tugas' : 'Ajukan Surat Tugas', icon: FileSignature, roles: ['admin', 'dosen'] },
     { id: 'sinta-verifikator', label: isAdmin ? 'Validasi Data SINTA' : 'Ajukan Data SINTA', icon: FileCheck2, roles: ['admin', 'dosen'] },
     { id: 'klaim', label: isAdmin ? 'Validasi Klaim' : 'Ajukan Klaim', icon: Award, roles: ['admin', 'dosen'] },

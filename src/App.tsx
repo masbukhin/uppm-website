@@ -14,6 +14,8 @@ import MonthlyReportDashboard from './components/MonthlyReportDashboard';
 import DocumentVerification from './components/DocumentVerification';
 import FinanceReport from './components/FinanceReport';
 import PublicResearch from './components/PublicResearch';
+import PublicHome from './components/PublicHome';
+import PublicContentManager from './components/PublicContentManager';
 import ChangePasswordForm from './components/ChangePasswordForm';
 import { motion, AnimatePresence } from 'motion/react';
 import { useStore } from './store/useStore';
@@ -23,7 +25,12 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
 
   useEffect(() => {
-    if (!isAdmin && activeTab === 'admin') {
+    // After login on /login, show the app at the root URL.
+    if (currentUser && window.location.pathname === '/login') window.history.replaceState(null, '', '/');
+  }, [currentUser]);
+
+  useEffect(() => {
+    if (!isAdmin && (activeTab === 'admin' || activeTab === 'konten-publik')) {
       setActiveTab('dashboard');
     }
   }, [activeTab, isAdmin]);
@@ -37,7 +44,7 @@ export default function App() {
   }
 
   if (!currentUser) {
-    return <LoginPage />;
+    return window.location.pathname === '/login' ? <LoginPage /> : <PublicHome />;
   }
 
   return (
@@ -156,6 +163,11 @@ export default function App() {
         {activeTab === 'finance-report' && isAdmin && (
           <motion.div key="finance-report" initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }} transition={{ duration: 0.2 }}>
             <FinanceReport />
+          </motion.div>
+        )}
+        {activeTab === 'konten-publik' && isAdmin && (
+          <motion.div key="konten-publik" initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }} transition={{ duration: 0.2 }}>
+            <PublicContentManager />
           </motion.div>
         )}
         {activeTab === 'account' && (

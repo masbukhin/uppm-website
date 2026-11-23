@@ -111,6 +111,7 @@ export default function LoginPage() {
         </section>
 
         <section className="p-8 lg:p-10">
+          <a href="/" className="mb-6 inline-flex items-center gap-1 text-sm font-medium text-red-800 hover:underline"><span aria-hidden="true">←</span> Kembali ke beranda</a>
           <h2 className="text-2xl font-bold text-slate-900">{hasAdminAccount ? 'Masuk Aplikasi' : 'Setup Admin Awal'}</h2>
           <p className="text-sm text-slate-500 mt-1">
             {isDatabaseLoading ? 'Memuat akun dari MySQL...' : databaseError ? 'Koneksi MySQL belum tersedia.' : hasAdminAccount ? 'Gunakan akun resmi yang dibuat admin UPPM.' : 'Buat akun admin pertama untuk database aplikasi ini.'}

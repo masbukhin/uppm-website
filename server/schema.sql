@@ -87,3 +87,10 @@ CREATE TABLE IF NOT EXISTS notifications (
   sort_order INT UNSIGNED NOT NULL, payload JSON NOT NULL, updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
   INDEX idx_notifications_dosen_read (dosen_id, is_read)
 ) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS public_posts (
+  id VARCHAR(100) PRIMARY KEY, kind ENUM('pengumuman','pendanaan','berita') NOT NULL, judul VARCHAR(255) NOT NULL,
+  is_published BOOLEAN NOT NULL DEFAULT TRUE, is_pinned BOOLEAN NOT NULL DEFAULT FALSE, published_at DATETIME(3) NOT NULL,
+  payload JSON NOT NULL, updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  INDEX idx_public_posts_kind (kind, is_published, published_at)
+) ENGINE=InnoDB;

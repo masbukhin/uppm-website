@@ -228,3 +228,34 @@ export interface SintaPublication {
   sintaId: string;
   url?: string;
 }
+
+export type PublicPostKind = 'pengumuman' | 'pendanaan' | 'berita';
+
+export interface PublicPost {
+  id: string;
+  kind: PublicPostKind;
+  judul: string;
+  ringkasan: string;
+  isi: string;
+  penyelenggara: string;
+  skema: string;
+  lingkup: string;
+  periode: string;
+  kontak: string;
+  tanggalBuka: string;
+  tenggat: string;
+  tautan: string;
+  gambar: string;
+  sumber: string;
+  publishedAt: string;
+  isPublished: boolean;
+  isPinned: boolean;
+}
+
+export interface PublicStats {
+  penelitian: number;
+  pengabdian: number;
+  dana: number;
+  publikasi: number;
+  dosen: number;
+}
