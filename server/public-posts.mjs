@@ -1,3 +1,5 @@
+import { FUNDING_SEEDS, RETIRED_SEED_IDS } from './funding-seeds.mjs';
+
 // Public website content (announcements, funding calls, news) managed by UPPM admins.
 // Stored in its own table so snapshot saves never touch it.
 
@@ -117,6 +119,10 @@ export const SEED_POSTS = [
     isi: 'UPPM Politeknik Sinar Mas Berau Coal mengajak seluruh dosen menyiapkan proposal hibah tahun 2027.\n\nHibah nasional:\n- BIMA Kemdiktisaintek: perkiraan pendaftaran Desember 2026 – Februari 2027.\n- RIIM Kompetisi LPDP & BRIN: perkiraan Mei – Juli 2027.\n\nHibah dan fellowship internasional: JSPS Postdoctoral Fellowship (Jepang), Humboldt Research Fellowship (Jerman), Fulbright Visiting Scholar (Amerika Serikat), DAAD Research Grants (Jerman), MSCA Postdoctoral Fellowships (Uni Eropa), Newton International Fellowship (Inggris), dan e-ASIA Joint Research Program.\n\nJadwal merupakan perkiraan dan dapat berubah. Pastikan kembali melalui laman resmi masing-masing penyelenggara. Dosen yang berminat dapat berkonsultasi dengan UPPM untuk pendampingan penyusunan proposal.',
     penyelenggara: 'UPPM Politeknik Sinar Mas Berau Coal', sumber: SOURCE_IG,
   },
+];
+
+// First-run funding seeds from the Instagram post, replaced by FUNDING_SEEDS (kept to detect unedited rows).
+const LEGACY_FUNDING_SEEDS = [
   {
     id: 'seed-dana-bima-2027', kind: 'pendanaan', publishedAt: '2026-11-23', lingkup: 'Nasional',
     judul: 'Hibah Penelitian & Pengabdian BIMA 2027', penyelenggara: 'Kemdiktisaintek',
@@ -146,12 +152,42 @@ export const SEED_POSTS = [
   })),
 ];
 
-export async function seedPostsIfEmpty(pool) {
-  const [[row]] = await pool.query('SELECT COUNT(*) AS total FROM public_posts');
-  if (Number(row.total) > 0) return 0;
-  for (const seed of SEED_POSTS) {
-    const result = normalizePost(seed, { id: seed.id });
-    if (result.ok) await upsertPost(pool, result.post);
+/**
+ * Adds each seed post once. A seed already applied is never re-added, so admin edits
+ * and deletions survive later deploys; new seeds shipped in code still appear.
+ */
+export async function applySeedPosts(pool, seeds = [...SEED_POSTS, ...FUNDING_SEEDS]) {
+  const [applied] = await pool.query('SELECT id FROM public_post_seeds');
+  const done = new Set(applied.map(row => row.id));
+  let added = 0;
+  for (const seed of seeds) {
+    if (done.has(seed.id)) continue;
+    const [[exists]] = await pool.execute('SELECT id FROM public_posts WHERE id = ? LIMIT 1', [seed.id]);
+    if (!exists) {
+      const result = normalizePost(seed, { id: seed.id });
+      if (result.ok) { await upsertPost(pool, result.post); added += 1; }
+    }
+    await pool.execute('INSERT IGNORE INTO public_post_seeds (id) VALUES (?)', [seed.id]);
   }
-  return SEED_POSTS.length;
+  if (added) console.log(`${added} konten publik awal ditambahkan.`);
+  await retireLegacySeeds(pool, done);
+  return added;
+}
+
+const COMPARED_FIELDS = ['judul', 'ringkasan', 'isi', 'penyelenggara', 'periode', 'tanggalBuka', 'tenggat', 'tautan', 'gambar'];
+
+/** Removes replaced first-run seeds once, but only rows an admin has not edited. */
+async function retireLegacySeeds(pool, done) {
+  for (const id of RETIRED_SEED_IDS) {
+    const marker = `retired:${id}`;
+    if (done.has(marker)) continue;
+    const legacy = LEGACY_FUNDING_SEEDS.find(seed => seed.id === id);
+    const [[row]] = await pool.execute('SELECT payload FROM public_posts WHERE id = ? LIMIT 1', [id]);
+    if (row && legacy) {
+      const current = typeof row.payload === 'string' ? JSON.parse(row.payload) : row.payload;
+      const original = normalizePost(legacy, { id }).post;
+      if (COMPARED_FIELDS.every(field => (current?.[field] ?? '') === (original[field] ?? ''))) await deletePost(pool, id);
+    }
+    await pool.execute('INSERT IGNORE INTO public_post_seeds (id) VALUES (?)', [marker]);
+  }
 }

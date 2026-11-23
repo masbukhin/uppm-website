@@ -2,7 +2,7 @@ import mysql from 'mysql2/promise';
 import fs from 'node:fs';
 import path from 'node:path';
 import { disabledPasswordHash, hashPassword, isPasswordHash } from './auth.mjs';
-import { deletePost, listPosts, publicStats, seedPostsIfEmpty, upsertPost } from './public-posts.mjs';
+import { deletePost, listPosts, publicStats, applySeedPosts, upsertPost } from './public-posts.mjs';
 
 // Old demo credentials that were once public; accounts using them get disabled.
 const LEAKED_DEMO_CREDENTIALS = new Set(['admin:admin123', 'dosen:dosen123']);
@@ -107,7 +107,7 @@ export async function createMysqlStore({ importLegacy = true } = {}) {
 
   if (importLegacy) await importLegacySnapshot(pool);
   await migratePlaintextPasswords(pool);
-  await seedPostsIfEmpty(pool);
+  await applySeedPosts(pool);
 
   // Runs `work` in a transaction that holds the app_state row lock, then bumps the revision.
   async function withRevisionLock(work, expectedRevision) {

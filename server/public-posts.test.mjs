@@ -24,3 +24,16 @@ test('normalizePost drops unsafe links and bad dates', () => {
 test('every seed post is valid', () => {
   for (const seed of SEED_POSTS) assert.equal(normalizePost(seed, { id: seed.id }).ok, true, seed.id);
 });
+
+test('funding seeds are valid, unique and do not reuse retired ids', async () => {
+  const { FUNDING_SEEDS, RETIRED_SEED_IDS } = await import('./funding-seeds.mjs');
+  const ids = new Set();
+  for (const seed of FUNDING_SEEDS) {
+    const result = normalizePost(seed, { id: seed.id });
+    assert.equal(result.ok, true, seed.id);
+    assert.ok(result.post.tautan, `${seed.id} needs an official link`);
+    assert.ok(!ids.has(seed.id) && !RETIRED_SEED_IDS.includes(seed.id), seed.id);
+    ids.add(seed.id);
+  }
+  assert.ok(!SEED_POSTS.some(seed => RETIRED_SEED_IDS.includes(seed.id)));
+});

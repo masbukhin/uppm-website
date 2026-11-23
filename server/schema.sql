@@ -94,3 +94,7 @@ CREATE TABLE IF NOT EXISTS public_posts (
   payload JSON NOT NULL, updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
   INDEX idx_public_posts_kind (kind, is_published, published_at)
 ) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS public_post_seeds (
+  id VARCHAR(100) PRIMARY KEY, applied_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)
+) ENGINE=InnoDB;

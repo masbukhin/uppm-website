@@ -41,7 +41,7 @@ export default function PublicHome() {
   const [isLoading, setIsLoading] = useState(true);
   const [menuOpen, setMenuOpen] = useState(false);
   const [selected, setSelected] = useState<PublicPost | null>(null);
-  const [scope, setScope] = useState<'Semua' | 'Nasional' | 'Internasional'>('Semua');
+  const [scope, setScope] = useState<'Semua' | 'Nasional' | 'Internasional' | 'Internal'>('Semua');
   const [query, setQuery] = useState('');
   const [showAllNews, setShowAllNews] = useState(false);
 
@@ -181,7 +181,7 @@ export default function PublicHome() {
           <SectionTitle icon={Wallet} eyebrow="Daftar sumber dana riset" title="Peluang pendanaan & hibah" />
           <div className="flex flex-col gap-3 sm:flex-row">
             <div className="flex rounded-lg bg-stone-200/70 p-1">
-              {(['Semua', 'Nasional', 'Internasional'] as const).map(option => (
+              {(['Semua', 'Nasional', 'Internasional', 'Internal'] as const).map(option => (
                 <button key={option} onClick={() => setScope(option)} className={`rounded-md px-3 py-1.5 text-sm font-semibold ${scope === option ? 'bg-white text-red-800 shadow-sm' : 'text-slate-600'}`}>{option}</button>
               ))}
             </div>
